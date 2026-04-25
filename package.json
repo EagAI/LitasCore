@@ -2,10 +2,10 @@
   "name": "euras",
   "version": "1.0.0",
   "description": "Euras Discord bot",
-  "main": "src/index.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "deploy": "node src/deploy-commands.js"
+    "start": "node index.js",
+    "deploy": "node index.js deploy"
   },
   "keywords": [],
   "author": "",
