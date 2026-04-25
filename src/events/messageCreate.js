@@ -10,7 +10,10 @@ module.exports = {
     if (message.author.bot) return;
     if (!message.guild) return;
 
-    if (config.ideasChannelId && message.channel.id === config.ideasChannelId) {
+    if (
+      config.ideasChannelIds.length > 0 &&
+      config.ideasChannelIds.includes(message.channel.id)
+    ) {
       return handleIdeasChannel(message);
     }
 

@@ -41,6 +41,14 @@ function buildBadges() {
     }));
 }
 
+/** Keli kanalai: IDEAS_CHANNEL_IDS (kableliais); jei tuščia – senasis IDEAS_CHANNEL_ID. */
+function buildIdeasChannelIds() {
+  const multi = parseCsvIds('IDEAS_CHANNEL_IDS');
+  if (multi.length) return multi;
+  const single = envTrim('IDEAS_CHANNEL_ID');
+  return single ? [single] : [];
+}
+
 const levelRoles = buildLevelRoles();
 const BADGES = buildBadges();
 const BADGE_MAP = Object.fromEntries(BADGES.map(b => [b.id, b]));
@@ -52,7 +60,7 @@ module.exports = {
 
   welcomeChannelId: envTrim('WELCOME_CHANNEL_ID'),
   logChannelId: envTrim('LOG_CHANNEL_ID'),
-  ideasChannelId: envTrim('IDEAS_CHANNEL_ID'),
+  ideasChannelIds: buildIdeasChannelIds(),
   boostChannelId: envTrim('BOOST_CHANNEL_ID'),
   levelUpChannelId: envTrim('LEVEL_UP_CHANNEL_ID'),
   youtubeAnnounceChannelId: envTrim('YOUTUBE_ANNOUNCE_CHANNEL_ID'),
