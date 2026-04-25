@@ -20,7 +20,7 @@ async function fetchImageAttachment(url, filename) {
   if (buf.length < 16) throw new Error('per mažas failas');
   return new AttachmentBuilder(buf, { name: filename });
 }
-const { BADGES, BADGE_MAP } = require('../config/badges');
+const { BADGES, BADGE_MAP } = require('../config');
 const { addBadge, removeBadge, getUserBadges } = require('../services/badges');
 const { addBalance, removeBalance } = require('../services/economy');
 

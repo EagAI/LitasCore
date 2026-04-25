@@ -1,7 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const db = require('../db');
 const config = require('../config');
-const levelRoles = require('../config/levelRoles');
+const { levelRoles } = require('../config');
 
 function getLevelUpChannel(guild) {
   const id = config.pasekimuChannelId || config.levelUpChannelId;

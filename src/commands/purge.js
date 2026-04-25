@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const { isStaff } = require('../utils/permissions');
-const { logChannelId } = require('../config/channelIds');
+const config = require('../config');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -54,7 +54,7 @@ module.exports = {
 
     await interaction.editReply({ content: `Ištrinta ${totalMsgs} žinutė(-s).` });
 
-    const logChannel = interaction.guild.channels.cache.get(logChannelId);
+    const logChannel = interaction.guild.channels.cache.get(config.logChannelId);
     if (logChannel) {
       const embed = new EmbedBuilder()
         .setColor(0xe03030)

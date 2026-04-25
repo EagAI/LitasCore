@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { BADGE_MAP } = require('../config/badges');
+const { BADGE_MAP } = require('../config');
 const { getUserBadges } = require('../services/badges');
 
 module.exports = {
