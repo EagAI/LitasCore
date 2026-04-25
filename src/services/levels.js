@@ -1,7 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const db = require('../db');
 const config = require('../config');
-const { levelRoles } = require('../config');
+const { levelRoles } = config;
 
 function getLevelUpChannel(guild) {
   const id = config.pasekimuChannelId || config.levelUpChannelId;
@@ -169,6 +169,20 @@ function getRewardRole(level) {
 }
 
 async function assignLevelRoles(member, level) {
+  if (config.levelRolesStack) {
+    for (const { level: need, roleId } of levelRoles) {
+      if (!roleId) continue;
+      if (level >= need) {
+        if (!member.roles.cache.has(roleId)) {
+          await member.roles.add(roleId).catch(() => {});
+        }
+      } else if (member.roles.cache.has(roleId)) {
+        await member.roles.remove(roleId).catch(() => {});
+      }
+    }
+    return;
+  }
+
   const allRoleIds = levelRoles.map(r => r.roleId).filter(Boolean);
   const reward = getRewardRole(level);
 

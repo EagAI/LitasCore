@@ -103,4 +103,7 @@ module.exports = {
   xpCooldownMs: parseInt(process.env.XP_COOLDOWN_MS || '5000', 10),
   xpPerMessage: parseInt(process.env.XP_PER_MESSAGE || '15', 10),
   voiceXpPerMinute: parseInt(process.env.VOICE_XP_PER_MINUTE || '8', 10),
+
+  /** true = laikyti visas pasiektas lygio roles; false = tik aukščiausia (numatyta) */
+  levelRolesStack: process.env.LEVEL_ROLES_STACK === 'true',
 };
