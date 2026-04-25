@@ -5,6 +5,14 @@ const { generateWelcomeImage } = require('../utils/welcomeImage');
 module.exports = {
   name: 'guildMemberAdd',
   async execute(member) {
+    for (const roleId of config.welcomeRoleIds) {
+      try {
+        await member.roles.add(roleId);
+      } catch (err) {
+        console.error('[welcome] Nepavyko priskirti rolės', roleId, err.message);
+      }
+    }
+
     const channel = member.guild.channels.cache.get(config.welcomeChannelId);
     if (!channel) return;
 

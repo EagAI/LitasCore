@@ -49,6 +49,14 @@ function buildIdeasChannelIds() {
   return single ? [single] : [];
 }
 
+/** Sveikinimo rolė(-s) naujiems nariams: WELCOME_ROLE_IDS arba vienas WELCOME_ROLE_ID. */
+function buildWelcomeRoleIds() {
+  const multi = parseCsvIds('WELCOME_ROLE_IDS');
+  if (multi.length) return multi;
+  const single = envTrim('WELCOME_ROLE_ID');
+  return single ? [single] : [];
+}
+
 const levelRoles = buildLevelRoles();
 const BADGES = buildBadges();
 const BADGE_MAP = Object.fromEntries(BADGES.map(b => [b.id, b]));
@@ -75,6 +83,7 @@ module.exports = {
 
   staffRoleIds: parseCsvIds('STAFF_ROLE_IDS'),
   modRoleIds: parseCsvIds('MOD_ROLE_IDS'),
+  welcomeRoleIds: buildWelcomeRoleIds(),
 
   levelRoles,
   BADGES,
