@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# SQLite and local runtime (see src/db/index.js → /data/euras.db)
+/data/
+
+# Secrets — use .env.example in the repo
+.env
+.env.local
+.env.*.local
+
+# Logs & debug
+*.log
+npm-debug.log*
+
+# OS / editor
+Thumbs.db
+.DS_Store
+*.swp
+*.swo

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: #1e1f22;
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+
+  .msg {
+    display: flex;
+    gap: 14px;
+    max-width: 680px;
+    width: 100%;
+  }
+
+  .avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #ff0000;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: #fff; font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .msg-body { flex: 1; min-width: 0; }
+
+  .msg-head {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .bot-name { font-weight: 700; font-size: 15px; color: #ff4444; }
+
+  .bot-badge {
+    background: #5865f2; color: #fff;
+    font-size: 9px; font-weight: 700;
+    padding: 1px 5px; border-radius: 3px;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+
+  .ts { color: #72767d; font-size: 12px; }
+
+  .content {
+    font-size: 15px;
+    color: #dbdee1;
+    line-height: 1.5;
+    margin-bottom: 6px;
+  }
+
+  .mention {
+    background: rgba(88,101,242,.3);
+    color: #c9d0ff;
+    border-radius: 3px;
+    padding: 0 2px;
+    font-weight: 500;
+  }
+
+  /* Embed */
+  .embed {
+    border-left: 4px solid #ff0000;
+    background: #2b2d31;
+    border-radius: 0 8px 8px 0;
+    overflow: hidden;
+    max-width: 516px;
+  }
+
+  .embed-inner { padding: 12px 14px 14px; }
+
+  .embed-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #00aff4;
+    text-decoration: none;
+    line-height: 1.4;
+    display: block;
+    margin-bottom: 10px;
+  }
+  .embed-title:hover { text-decoration: underline; }
+
+  .embed-image {
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: linear-gradient(135deg, #1a0000 0%, #3d0000 50%, #1a0000 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .embed-image::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      45deg, transparent, transparent 10px,
+      rgba(255,0,0,0.04) 10px, rgba(255,0,0,0.04) 20px
+    );
+  }
+
+  .play-icon {
+    width: 64px; height: 64px;
+    background: rgba(255,0,0,.9);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; color: #fff;
+    box-shadow: 0 4px 24px rgba(255,0,0,.5);
+    z-index: 1;
+  }
+
+  /* Button */
+  .btn-row { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .btn-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #4f545c;
+    color: #dbdee1;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 5px 16px;
+    border-radius: 4px;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-link:hover { background: #686d73; }
+
+  .btn-link .icon { font-size: 12px; opacity: .7; }
+</style>
+</head>
+<body>
+
+<div class="msg">
+  <div class="avatar">▶</div>
+  <div class="msg-body">
+
+    <div class="msg-head">
+      <span class="bot-name">LitasCore</span>
+      <span class="bot-badge">BOT</span>
+      <span class="ts">Šiandien 18:00</span>
+    </div>
+
+    <div class="content">
+      Opa <span class="mention">@everyone</span>, LITAS ką tik naujo kontento pakūrė❗ Pažiūrim😱
+    </div>
+
+    <div class="embed">
+      <div class="embed-inner">
+        <a class="embed-title" href="#">Naujas video pavadinimas čia – labai įdomus turinys</a>
+      </div>
+      <div class="embed-image">
+        <div class="play-icon">▶</div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <a class="btn-link" href="#">▶️ &nbsp;Žiūrėti per YouTube</a>
+      <a class="btn-link" href="#">🎵 &nbsp;Žiūrėti per TikTok</a>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "euras",
+  "version": "1.0.0",
+  "description": "Euras Discord bot",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.99",
+    "better-sqlite3": "^11.9.1",
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.5.0",
+    "fast-xml-parser": "^5.2.3",
+    "tesseract.js": "^7.0.0"
+  }
+}
