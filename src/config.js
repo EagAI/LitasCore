@@ -16,20 +16,8 @@ function parseCsvIds(key) {
     .filter(Boolean);
 }
 
-function parseJsonEnv(key, fallback) {
-  const raw = envTrim(key);
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
-    console.error(`[config] ${key}: invalid JSON —`, e.message);
-    return fallback;
-  }
-}
-
 /**
  * Lygio milestone rolės iš `LEVEL_<lygis>_ROLE_ID` (pvz. LEVEL_5_ROLE_ID).
- * Jei nė vienos — fallback į legacy LEVEL_ROLES_JSON.
  */
 function buildLevelRoles() {
   const fromEnv = [];
@@ -43,13 +31,7 @@ function buildLevelRoles() {
     if (roleId) fromEnv.push({ level, roleId });
   }
   fromEnv.sort((a, b) => a.level - b.level);
-  if (fromEnv.length > 0) return fromEnv;
-
-  const arr = parseJsonEnv('LEVEL_ROLES_JSON', []);
-  if (!Array.isArray(arr)) return [];
-  return arr
-    .filter(r => r && typeof r.level === 'number' && r.roleId)
-    .map(r => ({ level: r.level, roleId: String(r.roleId) }));
+  return fromEnv;
 }
 
 /** Ženkliuko Discord emoji vardas serveryje (dalis <:name:id>). */
@@ -61,10 +43,7 @@ const BADGE_ENV_SPECS = [
   { id: 'administracija', label: 'Administracija', emojiName: 'administracija', envKey: 'ADMINISTRACIJA_BADGE_ID' },
 ];
 
-/**
- * Ženkleliai iš `<PREFIX>_BADGE_ID` (tik Discord snowflake).
- * Jei nė vieno — fallback į legacy BADGES_JSON.
- */
+/** Ženkleliai iš `*_BADGE_ID` (Discord emoji snowflake). */
 function buildBadges() {
   const out = [];
   for (const spec of BADGE_ENV_SPECS) {
@@ -76,33 +55,19 @@ function buildBadges() {
       emoji: `<:${spec.emojiName}:${snowflake}>`,
     });
   }
-  if (out.length > 0) return out;
-
-  const arr = parseJsonEnv('BADGES_JSON', []);
-  if (!Array.isArray(arr)) return [];
-  return arr
-    .filter(b => b && b.id && b.label && b.emoji)
-    .map(b => ({
-      id: String(b.id),
-      label: String(b.label),
-      emoji: String(b.emoji),
-    }));
+  return out;
 }
 
-/** Keli kanalai: IDEAS_CHANNEL_IDS (kableliais); jei tuščia – senasis IDEAS_CHANNEL_ID. */
+/** Idėjų kanalas (vienas snowflake); tuščia = funkcija išjungta. */
 function buildIdeasChannelIds() {
-  const multi = parseCsvIds('IDEAS_CHANNEL_IDS');
-  if (multi.length) return multi;
-  const single = envTrim('IDEAS_CHANNEL_ID');
-  return single ? [single] : [];
+  const id = envTrim('IDEAS_CHANNEL_ID');
+  return id ? [id] : [];
 }
 
-/** Sveikinimo rolė(-s) naujiems nariams: WELCOME_ROLE_IDS arba vienas WELCOME_ROLE_ID. */
+/** Naujoko rolė (vienas snowflake); tuščia — nerodoma. */
 function buildWelcomeRoleIds() {
-  const multi = parseCsvIds('WELCOME_ROLE_IDS');
-  if (multi.length) return multi;
-  const single = envTrim('WELCOME_ROLE_ID');
-  return single ? [single] : [];
+  const id = envTrim('WELCOME_ROLE_ID');
+  return id ? [id] : [];
 }
 
 const levelRoles = buildLevelRoles();
@@ -122,7 +87,6 @@ module.exports = {
   youtubeAnnounceChannelId: envTrim('YOUTUBE_ANNOUNCE_CHANNEL_ID'),
   voiceCategoryId: envTrim('VOICE_CATEGORY_ID'),
   ticketsCategoryId: envTrim('TICKETS_CATEGORY_ID'),
-  closedTicketsCategoryId: envTrim('CLOSED_TICKETS_CATEGORY_ID'),
 
   adminActionsChannelId:
     envTrim('ADMIN_ACTIONS_CHANNEL_ID'),
@@ -144,13 +108,8 @@ module.exports = {
 
   tiktokUrl: envTrim('TIKTOK_URL'),
 
-  /** Vienas YouTube kanalo UC… ID RSS skelbimams. Legacy: jei tuščias `YOUTUBE_CHANNEL_ID`, naudojamas pirmasis iš `YOUTUBE_CHANNEL_IDS`. */
-  youtubeChannelId: (() => {
-    const single = envTrim('YOUTUBE_CHANNEL_ID');
-    if (single) return single;
-    const legacy = parseCsvIds('YOUTUBE_CHANNEL_IDS');
-    return legacy[0] ?? '';
-  })(),
+  /** Vienas YouTube kanalo UC… ID RSS skelbimams. */
+  youtubeChannelId: envTrim('YOUTUBE_CHANNEL_ID'),
 
   antiPingWindowMs: parseInt(process.env.ANTI_PING_WINDOW_MS || '600000', 10),
   antiPingWarnAt: parseInt(process.env.ANTI_PING_WARN_THRESHOLD || '3', 10),

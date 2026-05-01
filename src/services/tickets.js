@@ -114,13 +114,6 @@ async function handleTicketModal(interaction) {
   return interaction.editReply({ content: `Tiketas sukurtas: ${channel}` });
 }
 
-/** Rodo `ticket-0001`, o ne `uzdaryta-ticket-0001`. */
-function prettyTicketChannelName(name) {
-  return String(name || '')
-    .replace(/^uzdaryta-/i, '')
-    .replace(/^closed-/i, '') || '—';
-}
-
 function formatDateTimeLt(ts) {
   if (ts == null) return '—';
   return new Date(ts).toLocaleString('lt-LT', {
@@ -132,7 +125,7 @@ function formatDateTimeLt(ts) {
   });
 }
 
-async function sendTicketClosedDmToOpener(client, { ticket, guild, channelName, closedBy }) {
+async function sendTicketClosedDmToOpener(client, { ticket, guild, closedBy }) {
   try {
     const now = Date.now();
     const user = await client.users.fetch(ticket.opener_user_id);
@@ -144,7 +137,6 @@ async function sendTicketClosedDmToOpener(client, { ticket, guild, channelName, 
       .setColor(0xed4245)
       .addFields(
         { name: 'Tiketo ID', value: `\`#${ticket.id}\``, inline: true },
-        { name: 'Kanalas', value: `\`${prettyTicketChannelName(channelName)}\``, inline: true },
         { name: 'Uždarė', value: closedBy.tag, inline: true },
         { name: 'Atidaryta', value: formatDateTimeLt(ticket.created_at), inline: true },
         { name: 'Uždaryta', value: formatDateTimeLt(now), inline: true }
@@ -169,47 +161,28 @@ async function handleTicketClose(interaction) {
     return interaction.reply({ content: 'Šis kanalas nėra aktyvus tiketas.', ephemeral: true });
   }
 
+  const channel = interaction.channel;
+
   db.prepare('UPDATE tickets SET status = ? WHERE channel_id = ?').run(
     'closed',
-    interaction.channel.id
+    channel.id
   );
 
-  await interaction.reply({ content: 'Tiketas uždaromas...' });
-
-  const closedName = `uzdaryta-${interaction.channel.name}`.slice(0, 100);
-  await interaction.channel.setName(closedName);
-
-  if (config.closedTicketsCategoryId) {
-    await interaction.channel.setParent(config.closedTicketsCategoryId, {
-      lockPermissions: false,
-    });
-  }
-
-  const closeEmbed = new EmbedBuilder()
-    .setTitle('Tiketas uždarytas')
-    .setColor(0xed4245)
-    .addFields(
-      { name: 'Uždarytas', value: `${interaction.user}`, inline: true },
-      { name: 'Atidarytojas', value: `<@${ticket.opener_user_id}>`, inline: true }
-    )
-    .setTimestamp();
-
-  await interaction.channel.send({ embeds: [closeEmbed] });
+  await interaction.reply({
+    content: 'Tiketas uždarytas. Kanalas ištrintas.',
+    ephemeral: true,
+  });
 
   await sendTicketClosedDmToOpener(interaction.client, {
     ticket,
     guild: interaction.guild,
-    channelName: closedName,
     closedBy: interaction.user,
   });
 
   try {
-    await interaction.channel.permissionOverwrites.delete(
-      ticket.opener_user_id,
-      'Tiketas uždarytas — narys nebeturi kanalo prieigos'
-    );
+    await channel.delete('Tiketas uždarytas');
   } catch (err) {
-    console.error('[ticket] Nepavyko nuimti atidarytojo leidimų', err.message);
+    console.error('[ticket] Nepavyko ištrinti kanalo:', err?.message || err);
   }
 }
 
