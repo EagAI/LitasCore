@@ -48,7 +48,7 @@ module.exports = {
           opt.setName('kanalas').setDescription('Kanalas (numatyta: dabartinis)')
         )
         .addStringOption(opt =>
-          opt.setName('nuotrauka').setDescription('Nuotraukos URL (rodoma embede)')
+          opt.setName('nuotrauka').setDescription('Tiesioginis paveikslo URL (https://...), be BBCode')
         )
         .addStringOption(opt =>
           opt.setName('rolės').setDescription('Kas gali dalyvauti — @mention rolės (pvz: @VIP @Subscriber)')

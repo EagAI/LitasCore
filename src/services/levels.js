@@ -1,7 +1,20 @@
-const { EmbedBuilder } = require('discord.js');
+const path = require('path');
+const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const db = require('../db');
 const config = require('../config');
+const { addBalance } = require('./economy');
 const { levelRoles } = config;
+
+const LEVELUP_IMAGE_PATH = path.join(__dirname, '../assets/levelup.png');
+const LEVELUP_FILE_NAME = 'levelup.png';
+
+function levelUpAttachmentFiles() {
+  return [new AttachmentBuilder(LEVELUP_IMAGE_PATH, { name: LEVELUP_FILE_NAME })];
+}
+
+function embedSetLevelUpThumbnail(embed) {
+  embed.setThumbnail(`attachment://${LEVELUP_FILE_NAME}`);
+}
 
 function getLevelUpChannel(guild) {
   const id = config.pasekimuChannelId || config.levelUpChannelId;
@@ -65,10 +78,21 @@ async function addXp(member, amount) {
 
   if (newLevel > record.level) {
     await assignLevelRoles(member, newLevel);
+    const levelsGained = newLevel - record.level;
+    setImmediate(() => {
+      try {
+        for (let i = 0; i < levelsGained; i++) {
+          const amt = 10 + Math.floor(Math.random() * 6);
+          addBalance(member.id, member.guild.id, amt);
+        }
+      } catch (_) {
+        /* tyliai */
+      }
+    });
     const isMilestone = await postMilestoneLevelUp(member, newLevel);
-    return { leveledUp: true, newLevel, isMilestone };
+    return { leveledUp: true, newLevel, newXp, isMilestone };
   }
-  return { leveledUp: false, newLevel };
+  return { leveledUp: false, newLevel, newXp };
 }
 
 async function postMilestoneLevelUp(member, level) {
@@ -83,15 +107,70 @@ async function postMilestoneLevelUp(member, level) {
   const role = member.guild.roles.cache.get(milestone.roleId);
   const roleName = role ? role.name : 'Nauja rolė';
 
+  const t = `${config.emojis.levelup} Lygis pakeltas!`;
   const embed = new EmbedBuilder()
-    .setTitle('⬆️ Lygis pakeltas!')
+    .setTitle(t)
     .setDescription(
       `Sveikinu! ${member}, pakilai ką tik į **${level}** lygį!\nTu tapai **@${roleName}** 🎊`
     )
     .setColor(role?.color || 0xe03030);
+  embedSetLevelUpThumbnail(embed);
 
-  await channel.send({ embeds: [embed] });
+  await channel.send({ embeds: [embed], files: levelUpAttachmentFiles() });
   return true;
+}
+
+/** Standartinis lygio pakilimo pranešimas kanale (ne milestone – tą jau siunčia `postMilestoneLevelUp`). */
+async function announceNonMilestoneLevelUp(member, newLevel) {
+  const target = getLevelUpChannel(member.guild);
+  if (!target) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${config.emojis.levelup} Lygis pakeltas!`)
+    .setDescription(`Sveikinu! ${member}, pakilai ką tik į **${newLevel}** lygį!`)
+    .setColor(0xe03030);
+  embedSetLevelUpThumbnail(embed);
+
+  await target.send({ embeds: [embed], files: levelUpAttachmentFiles() });
+}
+
+/** Po `addXp`: jei pakilo lygis ir ne milestone embed – išsiųsti paprastą level-up. */
+async function afterXpGainAnnouncements(member, result) {
+  if (!result?.leveledUp || result.isMilestone) return;
+  await announceNonMilestoneLevelUp(member, result.newLevel);
+}
+
+async function removeXp(member, amount) {
+  const record = ensureRecord(member.id, member.guild.id);
+  const newXp = Math.max(0, record.xp - amount);
+  const newLevel = getLevelFromXp(newXp);
+
+  db.prepare(
+    'UPDATE levels SET xp = ?, level = ? WHERE user_id = ? AND guild_id = ?'
+  ).run(newXp, newLevel, member.id, member.guild.id);
+
+  await assignLevelRoles(member, newLevel);
+  return { newXp, newLevel, oldXp: record.xp, oldLevel: record.level };
+}
+
+function buildLevelCheckEmbed(user, guildId) {
+  const record = ensureRecord(user.id, guildId);
+  const xp = record?.xp || 0;
+  const info = getProgressInfo(xp);
+  const bar = buildProgressBar(info.percent);
+  const name = user.globalName || user.username;
+
+  return new EmbedBuilder()
+    .setAuthor({ name, iconURL: user.displayAvatarURL() })
+    .setColor(0x5865f2)
+    .addFields(
+      { name: 'Lygis', value: `${info.level}`, inline: true },
+      { name: 'XP', value: `${xp}`, inline: true },
+      { name: 'Progreso', value: `${info.current} / ${info.needed} XP (${info.percent}%)`, inline: true },
+      { name: '\u200b', value: bar },
+      { name: 'Žinutės', value: `${record?.total_messages || 0}`, inline: true },
+      { name: 'Voice (min)', value: `${record?.total_voice_minutes || 0}`, inline: true }
+    );
 }
 
 async function handleXp(message) {
@@ -107,18 +186,7 @@ async function handleXp(message) {
   ).run(now, message.author.id, message.guild.id);
 
   const result = await addXp(message.member, config.xpPerMessage);
-
-  if (result.leveledUp && !result.isMilestone) {
-    const target = getLevelUpChannel(message.guild);
-    if (!target) return;
-
-    const embed = new EmbedBuilder()
-      .setTitle('⬆️ Lygis pakeltas!')
-      .setDescription(`Sveikinu! ${message.author}, pakilai ką tik į **${result.newLevel}** lygį!`)
-      .setColor(0xe03030);
-
-    await target.send({ embeds: [embed] });
-  }
+  await afterXpGainAnnouncements(message.member, result);
 }
 
 function trackVoiceJoin(userId, guildId) {
@@ -150,17 +218,7 @@ async function trackVoiceLeave(member) {
 
   const xpGained = minutes * config.voiceXpPerMinute;
   const result = await addXp(member, xpGained);
-
-  if (result?.leveledUp && !result.isMilestone) {
-    const ch = getLevelUpChannel(member.guild);
-    if (!ch) return;
-
-    const embed = new EmbedBuilder()
-      .setTitle('⬆️ Lygis pakeltas!')
-      .setDescription(`Sveikinu! ${member}, pakilai ką tik į **${result.newLevel}** lygį!`)
-      .setColor(0xe03030);
-    await ch.send({ embeds: [embed] });
-  }
+  await afterXpGainAnnouncements(member, result);
 }
 
 function getRewardRole(level) {
@@ -227,4 +285,28 @@ function buildProgressBar(percent) {
   return '█'.repeat(filled) + '░'.repeat(10 - filled) + ` ${percent}%`;
 }
 
-module.exports = { handleXp, buildRankEmbed, assignLevelRoles, trackVoiceJoin, trackVoiceLeave, addXp };
+/** Bandomasis lygio embed (staff /test levelup) — be DB pakeitimų. */
+function getTestLevelUpPayload(member, displayLevel) {
+  const embed = new EmbedBuilder()
+    .setTitle(`${config.emojis.levelup} Lygis pakeltas!`)
+    .setDescription(
+      `Sveikinu! ${member}, pakilai ką tik į **${displayLevel}** lygį!\n` +
+      '_Tai bandomasis pranešimas — XP nekeičiamas._'
+    )
+    .setColor(0xe03030);
+  embedSetLevelUpThumbnail(embed);
+  return { embeds: [embed], files: levelUpAttachmentFiles() };
+}
+
+module.exports = {
+  handleXp,
+  buildRankEmbed,
+  buildLevelCheckEmbed,
+  assignLevelRoles,
+  trackVoiceJoin,
+  trackVoiceLeave,
+  addXp,
+  removeXp,
+  afterXpGainAnnouncements,
+  getTestLevelUpPayload,
+};

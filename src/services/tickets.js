@@ -114,6 +114,48 @@ async function handleTicketModal(interaction) {
   return interaction.editReply({ content: `Tiketas sukurtas: ${channel}` });
 }
 
+/** Rodo `ticket-0001`, o ne `uzdaryta-ticket-0001`. */
+function prettyTicketChannelName(name) {
+  return String(name || '')
+    .replace(/^uzdaryta-/i, '')
+    .replace(/^closed-/i, '') || '—';
+}
+
+function formatDateTimeLt(ts) {
+  if (ts == null) return '—';
+  return new Date(ts).toLocaleString('lt-LT', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+async function sendTicketClosedDmToOpener(client, { ticket, guild, channelName, closedBy }) {
+  try {
+    const now = Date.now();
+    const user = await client.users.fetch(ticket.opener_user_id);
+    const embed = new EmbedBuilder()
+      .setTitle('Tiketas uždarytas')
+      .setDescription(
+        `Tavo support tiketas serveryje **${guild.name}** uždarytas. Ačiū, kad kreipėtės.`
+      )
+      .setColor(0xed4245)
+      .addFields(
+        { name: 'Tiketo ID', value: `\`#${ticket.id}\``, inline: true },
+        { name: 'Kanalas', value: `\`${prettyTicketChannelName(channelName)}\``, inline: true },
+        { name: 'Uždarė', value: closedBy.tag, inline: true },
+        { name: 'Atidaryta', value: formatDateTimeLt(ticket.created_at), inline: true },
+        { name: 'Uždaryta', value: formatDateTimeLt(now), inline: true }
+      );
+    embed.setFooter({ text: guild.name });
+    await user.send({ embeds: [embed] });
+  } catch (err) {
+    console.warn('[ticket] Neišsiųsta DM atidarytojui (DM išjungta arba vartotojas neprieinamas):', err?.message);
+  }
+}
+
 async function handleTicketClose(interaction) {
   if (!isStaff(interaction.member)) {
     return interaction.reply({ content: 'Tik staff gali uždaryti tiketus.', ephemeral: true });
@@ -153,6 +195,22 @@ async function handleTicketClose(interaction) {
     .setTimestamp();
 
   await interaction.channel.send({ embeds: [closeEmbed] });
+
+  await sendTicketClosedDmToOpener(interaction.client, {
+    ticket,
+    guild: interaction.guild,
+    channelName: closedName,
+    closedBy: interaction.user,
+  });
+
+  try {
+    await interaction.channel.permissionOverwrites.delete(
+      ticket.opener_user_id,
+      'Tiketas uždarytas — narys nebeturi kanalo prieigos'
+    );
+  } catch (err) {
+    console.error('[ticket] Nepavyko nuimti atidarytojo leidimų', err.message);
+  }
 }
 
 module.exports = { handleTicketOpen, handleTicketModal, handleTicketClose };

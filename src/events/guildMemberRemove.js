@@ -1,9 +1,19 @@
 const { EmbedBuilder, ActivityType } = require('discord.js');
 const config = require('../config');
+const { saveMemberRolesBackup } = require('../services/memberRolesBackup');
+const { logGuildMemberEvent } = require('../services/userStats');
 
 module.exports = {
   name: 'guildMemberRemove',
   async execute(member) {
+    saveMemberRolesBackup(member);
+    logGuildMemberEvent(member.guild.id, member.id, 'leave');
+    const { maybeMarkLeaverAfterGiveawayLeave } = require('../services/guildLeavers');
+    try {
+      maybeMarkLeaverAfterGiveawayLeave(member.guild.id, member.id);
+    } catch (e) {
+      console.error('[guildLeavers] remove:', e?.message || e);
+    }
     const logChannel = member.guild.channels.cache.get(config.logChannelId);
     if (!logChannel) return;
 

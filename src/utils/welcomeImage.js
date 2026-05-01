@@ -1,8 +1,29 @@
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const path = require('path');
+const fs = require('fs');
 
-GlobalFonts.registerFromPath('C:/Windows/Fonts/segoeuib.ttf', 'SegoeB');
-GlobalFonts.registerFromPath('C:/Windows/Fonts/segoeui.ttf', 'Segoe');
+(function registerWelcomeFonts() {
+  const root = process.env.SystemRoot || 'C:/Windows';
+  const tries = [
+    path.join(root, 'Fonts/segoeuib.ttf'),
+    path.join(root, 'Fonts/segoeui.ttf'),
+  ];
+  try {
+    if (fs.existsSync(tries[0])) GlobalFonts.registerFromPath(tries[0], 'SegoeB');
+    if (fs.existsSync(tries[1])) GlobalFonts.registerFromPath(tries[1], 'Segoe');
+  } catch (_) {
+    /* built-in sans */
+  }
+})();
+
+function fontBold(px) {
+  const b = fs.existsSync(path.join(process.env.SystemRoot || 'C:/Windows', 'Fonts/segoeuib.ttf'));
+  return b ? `bold ${px}px SegoeB` : `bold ${px}px system-ui, sans-serif`;
+}
+function fontRegular(px) {
+  const r = fs.existsSync(path.join(process.env.SystemRoot || 'C:/Windows', 'Fonts/segoeui.ttf'));
+  return r ? `${px}px Segoe` : `${px}px system-ui, sans-serif`;
+}
 
 const BG_PATH = path.join(__dirname, '../assets/welcome.png');
 
@@ -42,15 +63,25 @@ async function generateWelcomeImage(member) {
 
   const nameY = cy + radius + borderWidth + Math.floor(H * 0.09);
   const nameFontSize = Math.floor(Math.min(W, H) * 0.085);
-  ctx.font = `bold ${nameFontSize}px SegoeB`;
+  ctx.font = fontBold(nameFontSize);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#e03030';
   ctx.shadowColor = '#000000';
   ctx.shadowBlur = 8;
-  ctx.fillText(member.user.username, cx, nameY);
+  const displayName = member.user.globalName || member.user.username;
+  const maxW = W * 0.88;
+  if (ctx.measureText(displayName).width > maxW) {
+    let s = displayName;
+    while (s.length > 1 && ctx.measureText(`${s}…`).width > maxW) {
+      s = s.slice(0, -1);
+    }
+    ctx.fillText(s.length < displayName.length ? `${s}…` : s, cx, nameY);
+  } else {
+    ctx.fillText(displayName, cx, nameY);
+  }
 
   const greetFontSize = Math.floor(nameFontSize * 0.72);
-  ctx.font = `${greetFontSize}px Segoe`;
+  ctx.font = fontRegular(greetFontSize);
   ctx.fillStyle = '#ffffff';
   ctx.shadowColor = '#000000';
   ctx.shadowBlur = 6;

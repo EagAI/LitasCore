@@ -30,7 +30,12 @@ module.exports = {
     }
 
     if (interaction.isButton()) {
-      const id = interaction.customId;
+      const id = interaction.customId || '';
+      if (id.startsWith('usrst|')) {
+        const { handleUserstatsPageButton } = require('../services/userStats');
+        return handleUserstatsPageButton(interaction);
+      }
+
       if (id.startsWith('scam:ban:') || id.startsWith('scam:untimeout:')) {
         const { handleScamLogButton } = require('../services/scamLogButtons');
         return handleScamLogButton(interaction);

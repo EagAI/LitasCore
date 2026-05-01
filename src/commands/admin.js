@@ -20,9 +20,17 @@ async function fetchImageAttachment(url, filename) {
   if (buf.length < 16) throw new Error('per mažas failas');
   return new AttachmentBuilder(buf, { name: filename });
 }
-const { BADGES, BADGE_MAP } = require('../config');
+const { BADGES, BADGE_MAP, blacklistRoleId } = require('../config');
 const { addBadge, removeBadge, getUserBadges } = require('../services/badges');
-const { addBalance, removeBalance } = require('../services/economy');
+const { addBalance, removeBalance, getBalance } = require('../services/economy');
+const {
+  addXp,
+  removeXp,
+  afterXpGainAnnouncements,
+  buildLevelCheckEmbed,
+} = require('../services/levels');
+const { buildInitialUserstatsReply } = require('../services/userStats');
+const { adminUpsertLeaver, adminRemoveLeaver } = require('../services/guildLeavers');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -98,6 +106,14 @@ module.exports = {
           opt.setName('trukme').setDescription('Trukmė valandomis (numatyta: 24)').setMinValue(1).setMaxValue(168)
         )
     )
+    .addSubcommand(sub =>
+      sub
+        .setName('userstats')
+        .setDescription('Detali nario statistika: istorija, laikas serveryje, lygiai…')
+        .addUserOption(opt =>
+          opt.setName('narys').setDescription('Vartotojas').setRequired(true)
+        )
+    )
     .addSubcommandGroup(group =>
       group
         .setName('badge')
@@ -167,6 +183,82 @@ module.exports = {
               opt.setName('kiekis').setDescription('Kiek litų atimti').setRequired(true).setMinValue(1)
             )
         )
+        .addSubcommand(sub =>
+          sub
+            .setName('balance')
+            .setDescription('Peržiūrėti nario litų balansą')
+            .addUserOption(opt =>
+              opt.setName('narys').setDescription('Vartotojas').setRequired(true)
+            )
+        )
+    )
+    .addSubcommandGroup(group =>
+      group
+        .setName('levels')
+        .setDescription('Lygių ir XP valdymas')
+        .addSubcommand(sub =>
+          sub
+            .setName('add')
+            .setDescription('Pridėti XP nariui')
+            .addUserOption(opt =>
+              opt.setName('narys').setDescription('Narys').setRequired(true)
+            )
+            .addIntegerOption(opt =>
+              opt.setName('xp').setDescription('Kiek XP pridėti').setRequired(true).setMinValue(1).setMaxValue(50_000_000)
+            )
+        )
+        .addSubcommand(sub =>
+          sub
+            .setName('remove')
+            .setDescription('Atimti XP iš nario')
+            .addUserOption(opt =>
+              opt.setName('narys').setDescription('Narys').setRequired(true)
+            )
+            .addIntegerOption(opt =>
+              opt.setName('xp').setDescription('Kiek XP atimti').setRequired(true).setMinValue(1).setMaxValue(50_000_000)
+            )
+        )
+        .addSubcommand(sub =>
+          sub
+            .setName('check')
+            .setDescription('Parodyti nario lygį ir XP')
+            .addUserOption(opt =>
+              opt.setName('narys').setDescription('Vartotojas').setRequired(true)
+            )
+        )
+    )
+    .addSubcommandGroup(group =>
+      group
+        .setName('blacklist')
+        .setDescription('Išėjikų sąrašo valdymas (DB + giveaway taisyklės)')
+        .addSubcommand(sub =>
+          sub
+            .setName('add')
+            .setDescription('Pridėti narį į išėjikų sąrašą')
+            .addUserOption(opt =>
+              opt.setName('narys').setDescription('Narys').setRequired(true)
+            )
+            .addStringOption(opt =>
+              opt
+                .setName('priezastis')
+                .setDescription('Priežastis (nebūtina)')
+                .setRequired(false)
+            )
+        )
+        .addSubcommand(sub =>
+          sub
+            .setName('remove')
+            .setDescription('Pašalinti narį iš išėjikų sąrašo')
+            .addUserOption(opt =>
+              opt.setName('narys').setDescription('Narys').setRequired(true)
+            )
+            .addStringOption(opt =>
+              opt
+                .setName('priezastis')
+                .setDescription('Komentaras atsakyme (nebūtina, nelaikoma DB)')
+                .setRequired(false)
+            )
+        )
     ),
 
   async execute(interaction) {
@@ -176,6 +268,33 @@ module.exports = {
 
     const group = interaction.options.getSubcommandGroup(false);
     const sub = interaction.options.getSubcommand();
+
+    if (!group && sub === 'userstats') {
+      if (!interaction.guild || !interaction.member) {
+        return interaction.reply({
+          content: 'Komanda galima tik serveryje (kaip narį).',
+          ephemeral: true,
+        });
+      }
+      const user = interaction.options.getUser('narys', true);
+      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+      try {
+        return await interaction.reply({
+          ephemeral: true,
+          ...buildInitialUserstatsReply(user, interaction.guild, member),
+        });
+      } catch (err) {
+        console.error('[admin userstats]', err?.stack || err?.message || err);
+        const body = {
+          content: `Klaida: ${String(err?.message || err).slice(0, 260)}`,
+          ephemeral: true,
+        };
+        if (interaction.deferred || interaction.replied) {
+          return interaction.followUp(body).catch(() => {});
+        }
+        return interaction.reply(body).catch(() => {});
+      }
+    }
 
     if (group === 'badge') {
       if (sub === 'add') {
@@ -237,6 +356,15 @@ module.exports = {
     }
 
     if (group === 'eco') {
+      if (sub === 'balance') {
+        const user = interaction.options.getUser('narys', true);
+        const bal = getBalance(user.id, interaction.guildId);
+        return interaction.reply({
+          content: `${user}: **${bal.toLocaleString('lt-LT')} Lt**.`,
+          ephemeral: true,
+        });
+      }
+
       const target = interaction.options.getMember('narys');
       const amount = interaction.options.getInteger('kiekis');
 
@@ -252,6 +380,113 @@ module.exports = {
         const newBal = removeBalance(target.id, interaction.guildId, amount);
         return interaction.reply({
           content: `✅ Iš **${target.displayName}** atimta **${amount} Lt**. Balansas: **${newBal} Lt**.`,
+          ephemeral: true,
+        });
+      }
+    }
+
+    if (group === 'levels') {
+      const user = interaction.options.getUser('narys', true);
+      const guildId = interaction.guildId;
+
+      if (sub === 'check') {
+        const embed = buildLevelCheckEmbed(user, guildId);
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+      }
+
+      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+      if (!member) {
+        return interaction.reply({
+          content: 'Nario nerasta šiame serveryje.',
+          ephemeral: true,
+        });
+      }
+
+      const xpAmt = interaction.options.getInteger('xp');
+
+      if (sub === 'add') {
+        const result = await addXp(member, xpAmt);
+        await afterXpGainAnnouncements(member, result);
+        return interaction.reply({
+          content:
+            `**+${xpAmt.toLocaleString('lt-LT')} XP** — ${member}\n` +
+            `Lygis **${result.newLevel}**, XP **${result.newXp.toLocaleString('lt-LT')}**.`,
+          ephemeral: true,
+        });
+      }
+
+      if (sub === 'remove') {
+        const out = await removeXp(member, xpAmt);
+        return interaction.reply({
+          content:
+            `**-${xpAmt.toLocaleString('lt-LT')} XP** (${member})\n` +
+            `Lygis **${out.newLevel}**, XP **${out.newXp.toLocaleString('lt-LT')}** (buvo ${out.oldLevel} / ${out.oldXp.toLocaleString('lt-LT')}).`,
+          ephemeral: true,
+        });
+      }
+    }
+
+    if (group === 'blacklist') {
+      if (!interaction.guild) {
+        return interaction.reply({ content: 'Tik serveryje.', ephemeral: true });
+      }
+      const user = interaction.options.getUser('narys', true);
+      const priez = interaction.options.getString('priezastis')?.trim() || null;
+      const guildId = interaction.guildId;
+      const label = user.displayName;
+
+      if (sub === 'add') {
+        adminUpsertLeaver(guildId, user.id, priez);
+        const roleParts = [];
+        if (blacklistRoleId) {
+          const m = await interaction.guild.members.fetch(user.id).catch(() => null);
+          if (m) {
+            try {
+              await m.roles.add(blacklistRoleId);
+              roleParts.push('Blacklist rolė priskyta.');
+            } catch (e) {
+              roleParts.push(
+                `Rolės priskirti nepavyko: ${String(e?.message || e).slice(0, 100)}.`
+              );
+            }
+          } else {
+            roleParts.push('Narys nėra serveryje — įrašas DB; rolė priskyta prisijungus.');
+          }
+        } else {
+          roleParts.push('BLACKLIST_ROLE_ID nenustatytas .env — įrašas DB, jokia rolė nepriskirta.');
+        }
+        const p = priez ? `Priežastis: **${priez}**. ` : '';
+        return interaction.reply({
+          content: `Įtrauktas **${label}** į išėjikų sąrašą. ${p}${roleParts.join(' ')}`.trim(),
+          ephemeral: true,
+        });
+      }
+
+      if (sub === 'remove') {
+        const del = adminRemoveLeaver(guildId, user.id);
+        if (!del.changes) {
+          return interaction.reply({
+            content: `**${label}** nebuvo išėjikų sąraše.`,
+            ephemeral: true,
+          });
+        }
+        const post = [];
+        if (blacklistRoleId) {
+          const m = await interaction.guild.members.fetch(user.id).catch(() => null);
+          if (m?.roles?.cache.has(blacklistRoleId)) {
+            try {
+              await m.roles.remove(blacklistRoleId);
+              post.push('Blacklist rolė nuimta.');
+            } catch (e) {
+              post.push(
+                `Rolės nuimti nepavyko: ${String(e?.message || e).slice(0, 100)}.`
+              );
+            }
+          }
+        }
+        const p = priez ? `Komentaras: **${priez}**. ` : '';
+        return interaction.reply({
+          content: `**${label}** pašalintas iš išėjikų sąrašo. ${p}${post.join(' ')}`.trim(),
           ephemeral: true,
         });
       }

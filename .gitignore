@@ -4,8 +4,13 @@ node_modules/
 # SQLite and local runtime (see src/db/index.js → /data/euras.db)
 /data/
 
+# Local docs & previews (not shipped with repo)
+/md/
+/misc/
+
 # Secrets — use .env.example in the repo
 .env
+.env.ex
 .env.local
 .env.*.local
 

@@ -11,6 +11,7 @@ function runMigrations(db) {
   addColumnIfMissing(db, 'levels', 'voice_joined_at', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(db, 'giveaways', 'image_url', 'TEXT');
   addColumnIfMissing(db, 'giveaways', 'required_roles', 'TEXT NOT NULL DEFAULT ""');
+  addColumnIfMissing(db, 'guild_leavers', 'reason', 'TEXT');
 }
 
 function setupSchema(db) {
@@ -133,6 +134,32 @@ function setupSchema(db) {
       user_id    TEXT NOT NULL,
       vote_type  TEXT NOT NULL,
       PRIMARY KEY (message_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS member_roles_backup (
+      guild_id TEXT NOT NULL,
+      user_id  TEXT NOT NULL,
+      role_ids TEXT NOT NULL DEFAULT '[]',
+      left_at  INTEGER NOT NULL,
+      PRIMARY KEY (guild_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS guild_member_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('join', 'leave')),
+      at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_guild_member_events_lookup
+      ON guild_member_events (guild_id, user_id);
+
+    CREATE TABLE IF NOT EXISTS guild_leavers (
+      guild_id   TEXT    NOT NULL,
+      user_id    TEXT    NOT NULL,
+      marked_at  INTEGER NOT NULL,
+      reason     TEXT,
+      PRIMARY KEY (guild_id, user_id)
     );
   `);
 

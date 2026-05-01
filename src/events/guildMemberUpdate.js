@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const config = require('../config');
+const { isRoleBackupRestoreAddingRoles } = require('../services/memberRolesBackup');
 
 const BOOST_ICON = 'https://cdn.discordapp.com/emojis/901606871987920906.png';
 
@@ -51,8 +52,14 @@ module.exports = {
 
     if (fields.length === 0) return;
 
+    const isRestoreSnap =
+      added.size > 0 &&
+      isRoleBackupRestoreAddingRoles(newMember.guild.id, newMember.user.id);
+
     const embed = new EmbedBuilder()
-      .setTitle('Narys atnaujintas')
+      .setTitle(
+        isRestoreSnap ? 'Narys grįžo ir grąžinamos rolės' : 'Narys atnaujintas'
+      )
       .setColor(0x5865f2)
       .addFields(
         { name: 'Narys', value: `${newMember.user.username} (<@${newMember.user.id}>)`, inline: true },

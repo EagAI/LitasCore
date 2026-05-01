@@ -1,45 +1,84 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, AttachmentBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const { randomInt } = require('crypto');
 const path = require('path');
 const db = require('../db');
+const config = require('../config');
 
 const DEFAULT_IMAGE = path.join(__dirname, '../assets/giveaway.png');
+const ATTACHMENT_GIVEAWAY = 'attachment://giveaway.png';
 
 const timers = new Map();
 
+/**
+ * Iš eilutės (pvz. BBCode [img]https://...[/img]) ištraukia pirmą galiojantį http(s) URL
+ * arba grąžina attachment ref priedui. Netinkama reikšmė = numatytasis paveikslas.
+ */
+function imageUrlForEmbed(raw) {
+  if (raw == null) return ATTACHMENT_GIVEAWAY;
+  const s = String(raw).trim();
+  if (!s) return ATTACHMENT_GIVEAWAY;
+  if (s.startsWith('attachment://')) return s;
+  if (s === ATTACHMENT_GIVEAWAY) return s;
+
+  try {
+    const u = new URL(s);
+    if (u.protocol === 'https:' || u.protocol === 'http:') return u.href;
+  } catch {
+    // ne grynas URL
+  }
+
+  const m = s.match(/https?:\/\/[^\s\]\[<>\"']+/i);
+  if (m) {
+    const candidate = m[0].replace(/[),.;>]+$/g, '');
+    try {
+      const u2 = new URL(candidate);
+      if (u2.protocol === 'https:' || u2.protocol === 'http:') return u2.href;
+    } catch {
+      // ignore
+    }
+  }
+  return ATTACHMENT_GIVEAWAY;
+}
+
+/** Išsaugojimui DB: tik http(s) arba null. */
+function normalizeImageUrlForStorage(raw) {
+  if (raw == null || !String(raw).trim()) return null;
+  const n = imageUrlForEmbed(raw);
+  if (n.startsWith('http')) return n;
+  return null;
+}
+
 function buildEmbed(prize, winners, endTime, entryCount, imageUrl = null, requiredRoles = []) {
+  const e = config.emojis;
   const fields = [
-    { name: '👥 Dalyviai',   value: `**${entryCount}**`,                   inline: true },
-    { name: '🏆 Laimėtojai', value: `**${winners}**`,                      inline: true },
-    { name: '⏰ Baigiasi',   value: `<t:${Math.floor(endTime / 1000)}:R>`, inline: true },
+    { name: `${e.giveawayParticipants} Dalyviai`,   value: `**${entryCount}**`,                   inline: true },
+    { name: `${e.giveawayWinner} Laimėtojai`, value: `**${winners}**`,                      inline: true },
+    { name: `${e.giveawayClock} Baigiasi`,   value: `<t:${Math.floor(endTime / 1000)}:R>`, inline: true },
   ];
 
   if (requiredRoles.length > 0) {
     fields.push({
-      name: '🔒 Kas gali dalyvauti',
+      name: `${e.giveawayLock} Kas gali dalyvauti`,
       value: requiredRoles.map(r => `<@&${r}>`).join(' '),
       inline: false,
     });
   }
 
   const embed = new EmbedBuilder()
-    .setTitle('🎁 GIVEAWAY')
+    .setTitle(`${e.giveawayGift} GIVEAWAY`)
     .setDescription(`## ${prize}`)
     .setColor(0xffffff)
     .addFields(...fields)
     .setFooter({ text: 'Baigiasi' })
     .setTimestamp(endTime);
 
-  if (imageUrl) {
-    embed.setImage(imageUrl);
-  } else {
-    embed.setImage('attachment://giveaway.png');
-  }
+  embed.setImage(imageUrl ? imageUrlForEmbed(imageUrl) : ATTACHMENT_GIVEAWAY);
   return embed;
 }
 
 function buildFiles(imageUrl) {
-  if (imageUrl) return [];
+  const u = imageUrlForEmbed(imageUrl);
+  if (u.startsWith('http')) return [];
   return [new AttachmentBuilder(DEFAULT_IMAGE, { name: 'giveaway.png' })];
 }
 
@@ -60,15 +99,15 @@ async function createGiveaway(client, channelId, guildId, prize, winnersCount, d
     .prepare(
       'INSERT INTO giveaways (guild_id, channel_id, prize, winners, end_time, image_url, required_roles) VALUES (?, ?, ?, ?, ?, ?, ?)'
     )
-    .run(guildId, channelId, prize, winnersCount, endTime, imageUrl, rolesJson).lastInsertRowid;
+    .run(guildId, channelId, prize, winnersCount, endTime, normalizeImageUrlForStorage(imageUrl), rolesJson).lastInsertRowid;
 
   const embed = buildEmbed(prize, winnersCount, endTime, 0, imageUrl, requiredRoles);
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setLabel('🎉 Dalyvauti')
-      .setStyle(ButtonStyle.Primary)
-      .setCustomId(`giveaway_enter_${id}`)
-  );
+  const button = new ButtonBuilder()
+    .setLabel('Dalyvauti')
+    .setStyle(ButtonStyle.Primary)
+    .setCustomId(`giveaway_enter_${id}`)
+    .setEmoji(config.giveawayButtonEmoji);
+  const row = new ActionRowBuilder().addComponents(button);
 
   const channel = client.channels.cache.get(channelId);
   if (!channel) return id;
@@ -125,14 +164,15 @@ async function endGiveaway(client, id) {
       .setDisabled(true)
   );
 
-  const endImage = giveaway.image_url || 'attachment://giveaway.png';
+  const endImage = imageUrlForEmbed(giveaway.image_url);
 
   if (entries.length === 0) {
+    const e = config.emojis;
     const endEmbed = new EmbedBuilder()
-      .setTitle('🎉 GIVEAWAY BAIGTAS 🎉')
+      .setTitle(`${e.giveawayWinner} GIVEAWAY BAIGTAS ${e.giveawayWinner}`)
       .setDescription(`~~${giveaway.prize}~~`)
       .setColor(0xed4245)
-      .addFields({ name: '🏆 Laimėtojai', value: 'Niekas nedalyvavo.' })
+      .addFields({ name: `${e.giveawayWinner} Laimėtojai`, value: 'Niekas nedalyvavo.' })
       .setFooter({ text: `Baigėsi • ${totalEntries} dalyvių` })
       .setImage(endImage)
       .setTimestamp();
@@ -143,20 +183,24 @@ async function endGiveaway(client, id) {
   const winners = pickWinners(entries, Math.min(giveaway.winners, entries.length));
   const mentions = winners.map(w => `<@${w.user_id}>`).join('\n');
 
+  const e = config.emojis;
   const endEmbed = new EmbedBuilder()
-    .setTitle('🎉 GIVEAWAY BAIGTAS 🎉')
+    .setTitle(`${e.giveawayWinner} GIVEAWAY BAIGTAS ${e.giveawayWinner}`)
     .setDescription(`~~${giveaway.prize}~~`)
     .setColor(0xed4245)
-    .addFields({ name: '🏆 Laimėtojai', value: mentions })
+    .addFields({ name: `${e.giveawayWinner} Laimėtojai`, value: mentions })
     .setFooter({ text: `Baigėsi • ${totalEntries} dalyvių` })
     .setImage(endImage)
     .setTimestamp();
 
   if (msg) await msg.edit({ embeds: [endEmbed], components: [endedRow] });
 
+  const e2 = config.emojis;
   const winEmbed = new EmbedBuilder()
-    .setTitle('🎉 Laimėtojai!')
-    .setDescription(`Sveikiname ${mentions.replace(/\n/g, ', ')}!\nJūs laimėjote **${giveaway.prize}** 🎁`)
+    .setTitle(`${e2.giveawayWinner} Laimėtojai!`)
+    .setDescription(
+      `Sveikiname ${mentions.replace(/\n/g, ', ')}!\nJūs laimėjote **${giveaway.prize}** ${e2.giveawayGift}`
+    )
     .setColor(0xed4245);
 
   await channel.send({ embeds: [winEmbed] });
@@ -177,7 +221,8 @@ async function rerollGiveaway(client, id) {
   const channel = client.channels.cache.get(giveaway.channel_id);
   if (!channel) return;
 
-  await channel.send(`🔄 Reroll! Nauji laimėtojai: ${mentions} 🎉`);
+  const e3 = config.emojis;
+  await channel.send(`🔄 Reroll! Nauji laimėtojai: ${mentions} ${e3.giveawayWinner}`);
 }
 
 async function restoreGiveawayTimers(client) {
@@ -193,6 +238,13 @@ async function handleGiveawayEnter(interaction) {
 
   if (!giveaway || giveaway.ended) {
     return interaction.reply({ content: 'Šis giveaway jau baigtas.', ephemeral: true });
+  }
+
+  if (config.blacklistRoleId && interaction.member?.roles?.cache.has(config.blacklistRoleId)) {
+    return interaction.reply({
+      content: 'Jums neleidžiama dalyvauti šiame giveaway.',
+      ephemeral: true,
+    });
   }
 
   const requiredRoles = JSON.parse(giveaway.required_roles || '[]');

@@ -3,6 +3,12 @@ function envTrim(key) {
   return typeof v === 'string' ? v.trim() : '';
 }
 
+/** Priklausomas nuo serverio emoji pavadinimo; jei nėra ID – Unicode. */
+function strCustomEmoji(emojiName, envIdKey, unicodeFallback) {
+  const id = envTrim(envIdKey);
+  return id ? `<:${emojiName}:${id}>` : unicodeFallback;
+}
+
 function parseCsvIds(key) {
   return envTrim(key)
     .split(',')
@@ -21,7 +27,24 @@ function parseJsonEnv(key, fallback) {
   }
 }
 
+/**
+ * Lygio milestone rolės iš `LEVEL_<lygis>_ROLE_ID` (pvz. LEVEL_5_ROLE_ID).
+ * Jei nė vienos — fallback į legacy LEVEL_ROLES_JSON.
+ */
 function buildLevelRoles() {
+  const fromEnv = [];
+  const re = /^LEVEL_(\d+)_ROLE_ID$/i;
+  for (const key of Object.keys(process.env)) {
+    const m = key.match(re);
+    if (!m) continue;
+    const level = parseInt(m[1], 10);
+    if (!Number.isFinite(level) || level < 1) continue;
+    const roleId = envTrim(key);
+    if (roleId) fromEnv.push({ level, roleId });
+  }
+  fromEnv.sort((a, b) => a.level - b.level);
+  if (fromEnv.length > 0) return fromEnv;
+
   const arr = parseJsonEnv('LEVEL_ROLES_JSON', []);
   if (!Array.isArray(arr)) return [];
   return arr
@@ -29,7 +52,32 @@ function buildLevelRoles() {
     .map(r => ({ level: r.level, roleId: String(r.roleId) }));
 }
 
+/** Ženkliuko Discord emoji vardas serveryje (dalis <:name:id>). */
+const BADGE_ENV_SPECS = [
+  { id: 'streamer', label: 'Streamer', emojiName: 'streamer', envKey: 'STREAMER_BADGE_ID' },
+  { id: 'vip', label: 'VIP', emojiName: 'vip', envKey: 'VIP_BADGE_ID' },
+  { id: 'supporteris', label: 'Supporteris', emojiName: 'supporteris', envKey: 'SUPPORTERIS_BADGE_ID' },
+  { id: 'padeka', label: 'Padėka', emojiName: 'padeka', envKey: 'PADEKA_BADGE_ID' },
+  { id: 'administracija', label: 'Administracija', emojiName: 'administracija', envKey: 'ADMINISTRACIJA_BADGE_ID' },
+];
+
+/**
+ * Ženkleliai iš `<PREFIX>_BADGE_ID` (tik Discord snowflake).
+ * Jei nė vieno — fallback į legacy BADGES_JSON.
+ */
 function buildBadges() {
+  const out = [];
+  for (const spec of BADGE_ENV_SPECS) {
+    const snowflake = envTrim(spec.envKey);
+    if (!snowflake) continue;
+    out.push({
+      id: spec.id,
+      label: spec.label,
+      emoji: `<:${spec.emojiName}:${snowflake}>`,
+    });
+  }
+  if (out.length > 0) return out;
+
   const arr = parseJsonEnv('BADGES_JSON', []);
   if (!Array.isArray(arr)) return [];
   return arr
@@ -81,6 +129,11 @@ module.exports = {
 
   pasekimuChannelId: envTrim('PASEKIMU_CHANNEL_ID'),
 
+  /**
+   * „Blacklist“ rolė: DB sąrašas, giveaway blokas.
+   */
+  blacklistRoleId: envTrim('BLACKLIST_ROLE_ID'),
+
   staffRoleIds: parseCsvIds('STAFF_ROLE_IDS'),
   modRoleIds: parseCsvIds('MOD_ROLE_IDS'),
   welcomeRoleIds: buildWelcomeRoleIds(),
@@ -91,9 +144,13 @@ module.exports = {
 
   tiktokUrl: envTrim('TIKTOK_URL'),
 
-  youtubeChannelIds: envTrim('YOUTUBE_CHANNEL_IDS')
-    ? envTrim('YOUTUBE_CHANNEL_IDS').split(',').map(s => s.trim()).filter(Boolean)
-    : [],
+  /** Vienas YouTube kanalo UC… ID RSS skelbimams. Legacy: jei tuščias `YOUTUBE_CHANNEL_ID`, naudojamas pirmasis iš `YOUTUBE_CHANNEL_IDS`. */
+  youtubeChannelId: (() => {
+    const single = envTrim('YOUTUBE_CHANNEL_ID');
+    if (single) return single;
+    const legacy = parseCsvIds('YOUTUBE_CHANNEL_IDS');
+    return legacy[0] ?? '';
+  })(),
 
   antiPingWindowMs: parseInt(process.env.ANTI_PING_WINDOW_MS || '600000', 10),
   antiPingWarnAt: parseInt(process.env.ANTI_PING_WARN_THRESHOLD || '3', 10),
@@ -106,4 +163,19 @@ module.exports = {
 
   /** true = laikyti visas pasiektas lygio roles; false = tik aukščiausia (numatyta) */
   levelRolesStack: process.env.LEVEL_ROLES_STACK === 'true',
+
+  emojis: {
+    levelup: strCustomEmoji('levelup', 'EMOJI_LEVELUP', '⬆️'),
+    giveawayGift: strCustomEmoji('dovanos', 'EMOJI_GIVEAWAY_GIFT', '🎁'),
+    giveawayParticipants: strCustomEmoji('dalyviai', 'EMOJI_GIVEAWAY_PARTICIPANTS', '👥'),
+    giveawayClock: strCustomEmoji('clock', 'EMOJI_GIVEAWAY_CLOCK', '⏰'),
+    giveawayWinner: strCustomEmoji('winner', 'EMOJI_GIVEAWAY_WINNER', '🏆'),
+    giveawayLock: strCustomEmoji('lock', 'EMOJI_GIVEAWAY_LOCK', '🔒'),
+  },
+
+  /** Dalyvauti mygtukas: jei nustatytas EMOJI_GIVEAWAY_ENTER – atskiras ID, kitu atveju PARTICIPANTS. */
+  giveawayButtonEmoji: (() => {
+    const id = envTrim('EMOJI_GIVEAWAY_ENTER') || envTrim('EMOJI_GIVEAWAY_PARTICIPANTS');
+    return id ? { id, name: 'dalyviai', animated: false } : '🎉';
+  })(),
 };
