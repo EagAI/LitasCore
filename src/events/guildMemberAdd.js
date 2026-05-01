@@ -2,6 +2,7 @@ const { AttachmentBuilder, ActivityType } = require('discord.js');
 const config = require('../config');
 const { generateWelcomeImage } = require('../utils/welcomeImage');
 const { restoreMemberRolesBackup } = require('../services/memberRolesBackup');
+const { seedRoleSnapshot } = require('../services/memberRoleSnapshot');
 const { logGuildMemberEvent } = require('../services/userStats');
 
 module.exports = {
@@ -26,6 +27,8 @@ module.exports = {
         }
       }
     }
+
+    seedRoleSnapshot(member);
 
     const channel = member.guild.channels.cache.get(config.welcomeChannelId);
     if (channel) {

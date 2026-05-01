@@ -1,5 +1,6 @@
 const { PermissionFlagsBits } = require('discord.js');
 const db = require('../db');
+const { seedRoleSnapshot } = require('./memberRoleSnapshot');
 
 /** Kol vyksta backup atkūrimas — log'e rodomas kitas pavadinimas. */
 const restoringRoleAdds = new Set();
@@ -125,6 +126,8 @@ async function restoreMemberRolesBackup(member) {
 
     del();
   } finally {
+    const fresh = await guild.members.fetch(member.id).catch(() => null);
+    seedRoleSnapshot(fresh ?? member);
     markRoleBackupRestoreFinished(member.guild.id, member.id);
   }
 }

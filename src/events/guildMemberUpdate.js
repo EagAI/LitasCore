@@ -1,8 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const config = require('../config');
 const { isRoleBackupRestoreAddingRoles } = require('../services/memberRolesBackup');
-
-const BOOST_ICON = 'https://cdn.discordapp.com/emojis/901606871987920906.png';
+const { diffRolesSinceSnapshot } = require('../services/memberRoleSnapshot');
 
 module.exports = {
   name: 'guildMemberUpdate',
@@ -40,20 +39,19 @@ module.exports = {
       );
     }
 
-    const added = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
-    const removed = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id));
+    const { added, removed } = diffRolesSinceSnapshot(newMember);
 
-    if (added.size > 0) {
+    if (added.length > 0) {
       fields.push({ name: 'Pridėtos rolės', value: added.map(r => r.toString()).join(', ') });
     }
-    if (removed.size > 0) {
+    if (removed.length > 0) {
       fields.push({ name: 'Pašalintos rolės', value: removed.map(r => r.toString()).join(', ') });
     }
 
     if (fields.length === 0) return;
 
     const isRestoreSnap =
-      added.size > 0 &&
+      added.length > 0 &&
       isRoleBackupRestoreAddingRoles(newMember.guild.id, newMember.user.id);
 
     const embed = new EmbedBuilder()

@@ -1,11 +1,13 @@
 const { EmbedBuilder, ActivityType } = require('discord.js');
 const config = require('../config');
 const { saveMemberRolesBackup } = require('../services/memberRolesBackup');
+const { clearRoleSnapshot } = require('../services/memberRoleSnapshot');
 const { logGuildMemberEvent } = require('../services/userStats');
 
 module.exports = {
   name: 'guildMemberRemove',
   async execute(member) {
+    clearRoleSnapshot(member.guild.id, member.id);
     saveMemberRolesBackup(member);
     logGuildMemberEvent(member.guild.id, member.id, 'leave');
     const { maybeMarkLeaverAfterGiveawayLeave } = require('../services/guildLeavers');
