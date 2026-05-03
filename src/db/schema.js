@@ -58,6 +58,12 @@ function setupSchema(db) {
       last_video_id TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS youtube_announced_titles (
+      yt_channel_id TEXT NOT NULL,
+      title_norm    TEXT NOT NULL,
+      PRIMARY KEY (yt_channel_id, title_norm)
+    );
+
     CREATE TABLE IF NOT EXISTS voice_channels (
       channel_id TEXT PRIMARY KEY,
       guild_id TEXT NOT NULL,

@@ -23,6 +23,14 @@ const parser = new XMLParser({ ignoreAttributes: false });
 /** Neleidžia lygiagrečių `checkChannels` (lėtas RSS + persidengiantis intervalas). */
 let pollInFlight = false;
 
+/** Kad „tas pats“ pavadinimas (skirtingas video ID) nekeltų naujo Discord pranešimo. */
+function normalizeAnnouncementTitle(title) {
+  return String(title ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
 /**
  * Iš YouTube RSS įrašo paima media:thumbnail URL, jei parseris juos pateikia.
  */
@@ -189,6 +197,23 @@ async function checkChannels(client) {
 
       if (dbRow.last_video_id === video.videoId) return;
 
+      const titleNorm = normalizeAnnouncementTitle(video.title);
+
+      const alreadyAnnouncedTitle = db
+        .prepare(
+          `SELECT 1 FROM youtube_announced_titles
+           WHERE yt_channel_id = ? AND title_norm = ?`
+        )
+        .get(ytId, titleNorm);
+
+      if (alreadyAnnouncedTitle) {
+        db.prepare('UPDATE youtube_state SET last_video_id = ? WHERE yt_channel_id = ?').run(
+          video.videoId,
+          ytId
+        );
+        return;
+      }
+
       const prev = dbRow.last_video_id;
       const claimed = db
         .prepare(
@@ -245,6 +270,12 @@ async function checkChannels(client) {
           components: [row],
         });
       }
+
+      db.prepare(
+        `INSERT INTO youtube_announced_titles (yt_channel_id, title_norm)
+         VALUES (?, ?)
+         ON CONFLICT (yt_channel_id, title_norm) DO NOTHING`
+      ).run(ytId, titleNorm);
     } catch (e) {
       console.error('[youtube] poll:', e?.message || e);
     }
