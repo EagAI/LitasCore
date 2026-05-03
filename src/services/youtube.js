@@ -169,6 +169,48 @@ function lastResortImageUrl(videoId) {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
+function formatYoutubePublishedForLog(published) {
+  if (!published || typeof published !== 'string') return '—';
+  const t = new Date(published).getTime();
+  if (!Number.isFinite(t)) return published.slice(0, 160);
+  return `<t:${Math.floor(t / 1000)}:F>`;
+}
+
+/**
+ * Tik „staff“ diagnozei į log kanalą (be @everyone).
+ */
+function buildYoutubeStaffLogEmbed(video) {
+  const titleTrunc =
+    video.title.length > 1000 ? `${video.title.slice(0, 997)}…` : (video.title || '*(be pavadinimo)*');
+  return new EmbedBuilder()
+    .setTitle('Naujas kontentas')
+    .setURL(video.url)
+    .setColor(0x5865f2)
+    .addFields(
+      { name: 'Video ID', value: `\`${video.videoId}\``, inline: true },
+      { name: 'Pavadinimas', value: titleTrunc, inline: false },
+      {
+        name: 'RSS „published“',
+        value: formatYoutubePublishedForLog(video.published),
+        inline: true,
+      }
+    )
+    .setFooter({ text: 'YouTube RSS polling' })
+    .setTimestamp();
+}
+
+async function logYoutubeAnnouncementDebug(client, video) {
+  const id = config.logChannelId;
+  if (!id) return;
+  const ch = client.channels.cache.get(id);
+  if (!ch?.send) return;
+  try {
+    await ch.send({ embeds: [buildYoutubeStaffLogEmbed(video)] });
+  } catch (e) {
+    console.warn('[youtube] nepavyko išsiųsti į LOG_CHANNEL_ID:', e?.message || e);
+  }
+}
+
 async function checkChannels(client) {
   const ytId = config.youtubeChannelId;
   if (!ytId) return;
@@ -285,6 +327,8 @@ async function checkChannels(client) {
           components: [row],
         });
       }
+
+      await logYoutubeAnnouncementDebug(client, video);
 
       db.prepare(
         `INSERT INTO youtube_announced_videos (yt_channel_id, video_id)
