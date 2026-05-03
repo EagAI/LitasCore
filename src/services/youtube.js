@@ -197,6 +197,21 @@ async function checkChannels(client) {
 
       if (dbRow.last_video_id === video.videoId) return;
 
+      const alreadyAnnouncedVideo = db
+        .prepare(
+          `SELECT 1 FROM youtube_announced_videos
+           WHERE yt_channel_id = ? AND video_id = ?`
+        )
+        .get(ytId, video.videoId);
+
+      if (alreadyAnnouncedVideo) {
+        db.prepare('UPDATE youtube_state SET last_video_id = ? WHERE yt_channel_id = ?').run(
+          video.videoId,
+          ytId
+        );
+        return;
+      }
+
       const titleNorm = normalizeAnnouncementTitle(video.title);
 
       const alreadyAnnouncedTitle = db
@@ -271,6 +286,11 @@ async function checkChannels(client) {
         });
       }
 
+      db.prepare(
+        `INSERT INTO youtube_announced_videos (yt_channel_id, video_id)
+         VALUES (?, ?)
+         ON CONFLICT (yt_channel_id, video_id) DO NOTHING`
+      ).run(ytId, video.videoId);
       db.prepare(
         `INSERT INTO youtube_announced_titles (yt_channel_id, title_norm)
          VALUES (?, ?)
