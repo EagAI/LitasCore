@@ -280,7 +280,6 @@ module.exports = {
       const member = await interaction.guild.members.fetch(user.id).catch(() => null);
       try {
         return await interaction.reply({
-          ephemeral: true,
           ...buildInitialUserstatsReply(user, interaction.guild, member),
         });
       } catch (err) {

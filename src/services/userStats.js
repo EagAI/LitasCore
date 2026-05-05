@@ -115,6 +115,19 @@ function collectUserstatsLines(user, guild, memberMaybe) {
         ? `**Šiame serveryje:** taip · prisijungė ${when(memberMaybe.joinedTimestamp)}`
         : '**Šiame serveryje:** ne',
       '',
+      '**Rolės**',
+      !memberMaybe
+        ? '_Narys nerastas šiame serveryje — rolių sąrašo nėra._'
+        : (() => {
+            const roleMentions = memberMaybe.roles.cache
+              .filter(r => r.id !== guildId)
+              .sort((a, b) => b.position - a.position)
+              .map(r => r.toString());
+            return roleMentions.length
+              ? roleMentions.join(', ')
+              : '_Be papildomų rolių (tik @everyone)._';
+          })(),
+      '',
     ].join('\n')
   );
 
@@ -298,7 +311,7 @@ function pagingRowButtons(guildId, targetUserId, pageZeroBased, totalPages) {
 }
 
 /**
- * Reply payload (ephemeral uždeda caller).
+ * Reply payload (/admin userstats atsako viešai kanale).
  */
 function buildInitialUserstatsReply(user, guild, memberMaybe, pageZeroBased = 0) {
   const avatarUrl = user.displayAvatarURL({ size: 128 });
