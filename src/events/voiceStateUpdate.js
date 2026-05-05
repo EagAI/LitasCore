@@ -18,7 +18,7 @@ module.exports = {
     // Pirmiausia skaičiuoti laiką senajame kanale, tada fiksuoti prisijungimą prie naujo —
     // kitaip perjungiant voice `voice_joined_at` perrašomas ir prarandamos minutės.
     if ((left || switched) && oldState.member && !oldState.member.user.bot) {
-      await trackVoiceLeave(oldState.member);
+      trackVoiceLeave(oldState.member);
     }
     if ((joined || switched) && newState.member && !newState.member.user.bot) {
       trackVoiceJoin(newState.member.id, newState.guild.id);

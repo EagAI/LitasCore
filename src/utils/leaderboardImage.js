@@ -112,7 +112,7 @@ async function generateLeaderboardImage(guild, client) {
     ctx.fillText('Lyderių dar nėra', W / 2, H / 2 - 14);
     ctx.font = font('r', 17);
     ctx.fillStyle = 'rgba(255,255,255,0.52)';
-    ctx.fillText('Rašyk kanaluose ir naudok voice — pradėk rinkti XP', W / 2, H / 2 + 28);
+    ctx.fillText('Rašyk kanaluose — pradėk rinkti XP', W / 2, H / 2 + 28);
     return canvas.toBuffer('image/png');
   }
 

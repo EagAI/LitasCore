@@ -196,7 +196,7 @@ function trackVoiceJoin(userId, guildId) {
   ).run(Date.now(), userId, guildId);
 }
 
-async function trackVoiceLeave(member) {
+function trackVoiceLeave(member) {
   const record = db
     .prepare('SELECT * FROM levels WHERE user_id = ? AND guild_id = ?')
     .get(member.id, member.guild.id);
@@ -215,10 +215,6 @@ async function trackVoiceLeave(member) {
   db.prepare(
     'UPDATE levels SET voice_joined_at = 0, total_voice_minutes = total_voice_minutes + ? WHERE user_id = ? AND guild_id = ?'
   ).run(minutes, member.id, member.guild.id);
-
-  const xpGained = minutes * config.voiceXpPerMinute;
-  const result = await addXp(member, xpGained);
-  await afterXpGainAnnouncements(member, result);
 }
 
 function getRewardRole(level) {
