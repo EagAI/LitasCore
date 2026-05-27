@@ -110,6 +110,17 @@ module.exports = {
 
   /** Vienas YouTube kanalo UC… ID RSS skelbimams. */
   youtubeChannelId: envTrim('YOUTUBE_CHANNEL_ID'),
+  youtubeLivePollIntervalMs: parseInt(process.env.YOUTUBE_LIVE_POLL_INTERVAL_MS || '90000', 10),
+  youtubeRssPollIntervalMs: parseInt(process.env.YOUTUBE_RSS_POLL_INTERVAL_MS || '300000', 10),
+  livePollIntervalMs: parseInt(process.env.LIVE_POLL_INTERVAL_MS || '90000', 10),
+
+  twitchClientId: envTrim('TWITCH_CLIENT_ID'),
+  twitchClientSecret: envTrim('TWITCH_CLIENT_SECRET'),
+  twitchChannelLogin: envTrim('TWITCH_CHANNEL_LOGIN'),
+  twitchUrl: envTrim('TWITCH_URL'),
+
+  kickChannelSlug: envTrim('KICK_CHANNEL_SLUG'),
+  kickUrl: envTrim('KICK_URL'),
 
   antiPingWindowMs: parseInt(process.env.ANTI_PING_WINDOW_MS || '600000', 10),
   antiPingWarnAt: parseInt(process.env.ANTI_PING_WARN_THRESHOLD || '3', 10),

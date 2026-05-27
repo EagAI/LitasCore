@@ -70,6 +70,20 @@ function setupSchema(db) {
       PRIMARY KEY (yt_channel_id, video_id)
     );
 
+    CREATE TABLE IF NOT EXISTS platform_live_state (
+      platform TEXT NOT NULL,
+      channel_key TEXT NOT NULL,
+      last_stream_id TEXT,
+      PRIMARY KEY (platform, channel_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS platform_live_announced (
+      platform TEXT NOT NULL,
+      channel_key TEXT NOT NULL,
+      stream_id TEXT NOT NULL,
+      PRIMARY KEY (platform, channel_key, stream_id)
+    );
+
     CREATE TABLE IF NOT EXISTS voice_channels (
       channel_id TEXT PRIMARY KEY,
       guild_id TEXT NOT NULL,

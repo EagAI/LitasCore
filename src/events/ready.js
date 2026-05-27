@@ -1,5 +1,5 @@
 const { ActivityType } = require('discord.js');
-const { startYoutubePoller } = require('../services/youtube');
+const { startLiveStreamPoller } = require('../services/liveStreams');
 const { restoreGiveawayTimers } = require('../services/giveaway');
 const { ensureVoiceHub } = require('../services/voiceHub');
 const config = require('../config');
@@ -28,7 +28,7 @@ module.exports = {
       );
     }
     await ensureVoiceHub(client);
-    startYoutubePoller(client);
+    startLiveStreamPoller(client);
     restoreGiveawayTimers(client);
     updateStatus(client);
     setInterval(() => updateStatus(client), 5 * 60 * 1000);
