@@ -31,7 +31,7 @@ const {
 } = require('../services/levels');
 const { buildInitialUserstatsReply } = require('../services/userStats');
 const { adminUpsertLeaver, adminRemoveLeaver } = require('../services/guildLeavers');
-const { forceTestLiveAnnouncement } = require('../services/liveStreams');
+const { forceTestLiveAnnouncement, adminLiveCheck } = require('../services/liveStreams');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -259,6 +259,16 @@ module.exports = {
                 .setDescription('Komentaras atsakyme (nebūtina, nelaikoma DB)')
                 .setRequired(false)
             )
+        )
+    )
+    .addSubcommandGroup(group =>
+      group
+        .setName('live')
+        .setDescription('YouTube LIVE skelbimų valdymas')
+        .addSubcommand(sub =>
+          sub
+            .setName('check')
+            .setDescription('Patikrinti ar Litas LIVE ir skelbti jei dar nebuvo papostinta')
         )
     )
     .addSubcommandGroup(group =>
@@ -501,6 +511,23 @@ module.exports = {
           content: `**${label}** pašalintas iš išėjikų sąrašo. ${p}${post.join(' ')}`.trim(),
           ephemeral: true,
         });
+      }
+    }
+
+    if (group === 'live') {
+      if (sub === 'check') {
+        await interaction.deferReply({ ephemeral: true });
+        try {
+          const result = await adminLiveCheck(interaction.client, {
+            requestedBy: `${interaction.user.tag} (\`${interaction.user.id}\`)`,
+          });
+          return interaction.editReply({ content: result.message });
+        } catch (err) {
+          console.error('[admin live check]', err?.stack || err?.message || err);
+          return interaction.editReply({
+            content: `Klaida: ${String(err?.message || err).slice(0, 260)}`,
+          });
+        }
       }
     }
 

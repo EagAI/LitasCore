@@ -164,11 +164,15 @@ function describeLiveTestCheck(check) {
   return '—';
 }
 
-function buildAdminTestLiveLogEmbed(data) {
-  const { ok, reason, source, video, checks, requestedBy, message, announced } = data;
+function buildAdminLiveActionLogEmbed(data) {
+  const { kind, ok, reason, source, video, checks, requestedBy, message, announced } = data;
+  const isTest = kind === 'test';
+  const label = isTest ? 'Admin test live' : 'Admin live check';
+  const footer = isTest ? '/admin test live' : '/admin live check';
 
   let color = 0x5865f2;
-  if (ok) color = 0x57f287;
+  if (ok && reason === 'already_posted') color = 0xfaa61a;
+  else if (ok) color = 0x57f287;
   else if (reason === 'not_live') {
     color = checks.probe.error || checks.liveRss.error ? 0xed4245 : 0xfaa61a;
   } else {
@@ -176,10 +180,10 @@ function buildAdminTestLiveLogEmbed(data) {
   }
 
   const embed = new EmbedBuilder()
-    .setTitle(ok ? 'Admin test live — sėkmė' : 'Admin test live — nesėkmė')
+    .setTitle(ok ? `${label} — sėkmė` : `${label} — nesėkmė`)
     .setColor(color)
     .setTimestamp()
-    .setFooter({ text: '/admin test live' });
+    .setFooter({ text: footer });
 
   if (requestedBy) {
     embed.addFields({ name: 'Paleido', value: requestedBy, inline: true });
@@ -190,7 +194,7 @@ function buildAdminTestLiveLogEmbed(data) {
     { name: 'YouTube live RSS', value: describeLiveTestCheck(checks.liveRss), inline: false }
   );
 
-  if (ok && source) {
+  if (source) {
     embed.addFields({
       name: 'Suveikė',
       value: LIVE_TEST_SOURCE_LABELS[source] || source,
@@ -209,11 +213,12 @@ function buildAdminTestLiveLogEmbed(data) {
   }
 
   if (typeof announced === 'boolean') {
-    embed.addFields({
-      name: 'Skelbimas',
-      value: announced ? 'Išsiųstas į announce kanalą (be @everyone)' : 'Neišsiųstas',
-      inline: true,
-    });
+    const announceText = announced
+      ? isTest
+        ? 'Išsiųstas į announce kanalą (be @everyone)'
+        : 'Išsiųstas į announce kanalą (su @everyone)'
+      : 'Neišsiųstas';
+    embed.addFields({ name: 'Skelbimas', value: announceText, inline: true });
   }
 
   if (message) {
@@ -223,15 +228,15 @@ function buildAdminTestLiveLogEmbed(data) {
   return embed;
 }
 
-async function logAdminTestLiveResult(client, data) {
+async function logAdminLiveActionResult(client, data) {
   const id = config.logChannelId;
   if (!id) return;
   const ch = client.channels.cache.get(id);
   if (!ch?.send) return;
   try {
-    await ch.send({ embeds: [buildAdminTestLiveLogEmbed(data)] });
+    await ch.send({ embeds: [buildAdminLiveActionLogEmbed(data)] });
   } catch (e) {
-    console.warn('[youtube][live][test] LOG_CHANNEL_ID:', e?.message || e);
+    console.warn('[youtube][live][admin] LOG_CHANNEL_ID:', e?.message || e);
   }
 }
 
@@ -327,6 +332,42 @@ async function fetchLatestYoutubeVideoForLive(ytChannelId) {
   return null;
 }
 
+async function detectYoutubeLive(ytChannelId) {
+  const checks = {
+    probe: { status: 'pending', error: null },
+    liveRss: { status: 'pending', error: null },
+  };
+
+  let video = null;
+  let source = null;
+
+  try {
+    video = await probeYoutubeLivePage(ytChannelId);
+    checks.probe.status = video ? 'found' : 'empty';
+  } catch (e) {
+    checks.probe.status = 'error';
+    checks.probe.error = formatLiveTestError(e);
+    console.warn('[youtube][live] /live probe:', e?.message || e);
+  }
+
+  if (video) {
+    source = 'live_probe';
+    checks.liveRss.status = 'skipped';
+  } else {
+    try {
+      video = await fetchLatestYoutubeVideoForLive(ytChannelId);
+      checks.liveRss.status = video ? 'found' : 'empty';
+      if (video) source = 'live_rss';
+    } catch (e) {
+      checks.liveRss.status = 'error';
+      checks.liveRss.error = formatLiveTestError(e);
+      console.warn('[youtube][live] live RSS:', e?.message || e);
+    }
+  }
+
+  return { video, source, checks };
+}
+
 async function fetchLatestYoutubeVideoFromRss(ytChannelId) {
   return fetchLatestVideoFromRssUrl(`${RSS_BASE}${ytChannelId}`);
 }
@@ -353,20 +394,24 @@ function isYoutubeTitleAlreadyAnnounced(ytChannelId, titleNorm) {
 
 async function maybeAnnounceYoutubeVideo(client, video) {
   const ytId = config.youtubeChannelId;
-  if (!ytId || !video?.videoId) return;
+  if (!ytId || !video?.videoId) return { posted: false, reason: 'missing_video' };
 
   const announceChannel = config.youtubeAnnounceChannelId
     ? client.channels.cache.get(config.youtubeAnnounceChannelId)
     : null;
 
-  if (!announceChannel?.send) return;
+  if (!announceChannel?.send) return { posted: false, reason: 'no_channel' };
 
   const videoKey = `${ytId}:${video.videoId}`;
-  if (announcingVideoKeys.has(videoKey)) return;
-  if (isYoutubeVideoAlreadyAnnounced(ytId, video.videoId)) return;
+  if (announcingVideoKeys.has(videoKey)) return { posted: false, reason: 'in_flight' };
+  if (isYoutubeVideoAlreadyAnnounced(ytId, video.videoId)) {
+    return { posted: false, reason: 'already_announced_video' };
+  }
 
   const titleNorm = normalizeAnnouncementTitle(video.title);
-  if (isYoutubeTitleAlreadyAnnounced(ytId, titleNorm)) return;
+  if (isYoutubeTitleAlreadyAnnounced(ytId, titleNorm)) {
+    return { posted: false, reason: 'already_announced_title' };
+  }
 
   announcingVideoKeys.add(videoKey);
   try {
@@ -395,6 +440,8 @@ async function maybeAnnounceYoutubeVideo(client, video) {
        VALUES (?, ?)
        ON CONFLICT (yt_channel_id, title_norm) DO NOTHING`
     ).run(ytId, titleNorm);
+
+    return { posted: true };
   } finally {
     announcingVideoKeys.delete(videoKey);
   }
@@ -411,7 +458,7 @@ async function checkYoutubeLive(client) {
   liveInFlight = true;
 
   try {
-    const video = await fetchLatestYoutubeVideoForLive(ytId);
+    const { video } = await detectYoutubeLive(ytId);
     if (!video) return;
 
     await maybeAnnounceYoutubeVideo(client, video);
@@ -448,7 +495,8 @@ async function forceTestLiveAnnouncement(client, options = {}) {
   };
 
   const finish = async result => {
-    await logAdminTestLiveResult(client, {
+    await logAdminLiveActionResult(client, {
+      kind: 'test',
       ...result,
       checks,
       requestedBy,
@@ -484,32 +532,9 @@ async function forceTestLiveAnnouncement(client, options = {}) {
       });
     }
 
-    let video = null;
-    let source = null;
-
-    try {
-      video = await probeYoutubeLivePage(ytId);
-      checks.probe.status = video ? 'found' : 'empty';
-    } catch (e) {
-      checks.probe.status = 'error';
-      checks.probe.error = formatLiveTestError(e);
-      console.warn('[youtube][live][test] /live probe:', e?.message || e);
-    }
-
-    if (video) {
-      source = 'live_probe';
-      checks.liveRss.status = 'skipped';
-    } else {
-      try {
-        video = await fetchLatestYoutubeVideoForLive(ytId);
-        checks.liveRss.status = video ? 'found' : 'empty';
-        if (video) source = 'live_rss';
-      } catch (e) {
-        checks.liveRss.status = 'error';
-        checks.liveRss.error = formatLiveTestError(e);
-        console.warn('[youtube][live][test] live RSS:', e?.message || e);
-      }
-    }
+    const detected = await detectYoutubeLive(ytId);
+    Object.assign(checks, detected.checks);
+    const { video, source } = detected;
 
     const hasErrors = checks.probe.status === 'error' || checks.liveRss.status === 'error';
 
@@ -543,7 +568,119 @@ async function forceTestLiveAnnouncement(client, options = {}) {
   } catch (e) {
     const message = formatLiveTestError(e);
     console.error('[youtube][live][test] fatal:', e?.stack || e?.message || e);
-    await logAdminTestLiveResult(client, {
+    await logAdminLiveActionResult(client, {
+      kind: 'test',
+      ok: false,
+      reason: 'fatal',
+      message,
+      checks,
+      requestedBy,
+      announced: false,
+    });
+    return { ok: false, message: `Klaida: ${message}` };
+  }
+}
+
+async function adminLiveCheck(client, options = {}) {
+  const requestedBy = options.requestedBy || null;
+  const checks = {
+    probe: { status: 'pending', error: null },
+    liveRss: { status: 'pending', error: null },
+  };
+
+  const finish = async result => {
+    await logAdminLiveActionResult(client, {
+      kind: 'check',
+      ...result,
+      checks,
+      requestedBy,
+    });
+    return { ok: result.ok, message: result.message };
+  };
+
+  try {
+    const ytId = config.youtubeChannelId;
+    if (!ytId) {
+      return finish({
+        ok: false,
+        reason: 'config',
+        message: 'YOUTUBE_CHANNEL_ID nenustatytas .env.',
+      });
+    }
+
+    if (!config.youtubeAnnounceChannelId) {
+      return finish({
+        ok: false,
+        reason: 'config',
+        message: 'YOUTUBE_ANNOUNCE_CHANNEL_ID nenustatytas .env.',
+      });
+    }
+
+    const detected = await detectYoutubeLive(ytId);
+    Object.assign(checks, detected.checks);
+    const { video, source } = detected;
+
+    const hasErrors = checks.probe.status === 'error' || checks.liveRss.status === 'error';
+
+    if (!video) {
+      const message = hasErrors
+        ? 'LIVE nerastas — `/live` arba live RSS metu įvyko klaida (detalės log kanale).'
+        : 'Litas šiuo metu ne LIVE (YouTube /live ir live RSS tušti).';
+      return finish({
+        ok: false,
+        reason: hasErrors ? 'error' : 'not_live',
+        message,
+        announced: false,
+      });
+    }
+
+    const sourceLabel = LIVE_TEST_SOURCE_LABELS[source] || source;
+    const announceResult = await maybeAnnounceYoutubeVideo(client, video);
+
+    if (announceResult.posted) {
+      return finish({
+        ok: true,
+        reason: 'posted',
+        source,
+        video,
+        announced: true,
+        message: `LIVE rastas per **${sourceLabel}** — skelbimas išsiųstas su @everyone: **${video.title}** (\`${video.videoId}\`).`,
+      });
+    }
+
+    if (
+      announceResult.reason === 'already_announced_video' ||
+      announceResult.reason === 'already_announced_title'
+    ) {
+      return finish({
+        ok: true,
+        reason: 'already_posted',
+        source,
+        video,
+        announced: false,
+        message: `LIVE rastas per **${sourceLabel}**, bet **${video.title}** jau buvo skelbta — nieko nepostinta.`,
+      });
+    }
+
+    const reasonMessages = {
+      no_channel: 'Skelbimo kanalas nerastas arba botas negali ten siųsti.',
+      in_flight: 'Skelbimas jau vykdomas — bandyk dar kartą po kelių sekundžių.',
+      missing_video: 'LIVE įrašas neturi video ID.',
+    };
+
+    return finish({
+      ok: false,
+      reason: announceResult.reason || 'unknown',
+      source,
+      video,
+      announced: false,
+      message: reasonMessages[announceResult.reason] || 'Skelbimo išsiųsti nepavyko.',
+    });
+  } catch (e) {
+    const message = formatLiveTestError(e);
+    console.error('[youtube][live][check] fatal:', e?.stack || e?.message || e);
+    await logAdminLiveActionResult(client, {
+      kind: 'check',
       ok: false,
       reason: 'fatal',
       message,
@@ -580,5 +717,6 @@ function startLiveStreamPoller(client) {
 module.exports = {
   startLiveStreamPoller,
   forceTestLiveAnnouncement,
+  adminLiveCheck,
 };
 
