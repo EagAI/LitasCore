@@ -31,6 +31,7 @@ const {
 } = require('../services/levels');
 const { buildInitialUserstatsReply } = require('../services/userStats');
 const { adminUpsertLeaver, adminRemoveLeaver } = require('../services/guildLeavers');
+const { forceTestLiveAnnouncement } = require('../services/liveStreams');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -257,6 +258,18 @@ module.exports = {
                 .setName('priezastis')
                 .setDescription('Komentaras atsakyme (nebūtina, nelaikoma DB)')
                 .setRequired(false)
+            )
+        )
+    )
+    .addSubcommandGroup(group =>
+      group
+        .setName('test')
+        .setDescription('Bandomosios admin komandos')
+        .addSubcommand(sub =>
+          sub
+            .setName('live')
+            .setDescription(
+              'Priverstinai patikrinti ar Litas LIVE ir išsiųsti testinį skelbimą (be @everyone)'
             )
         )
     ),
@@ -488,6 +501,23 @@ module.exports = {
           content: `**${label}** pašalintas iš išėjikų sąrašo. ${p}${post.join(' ')}`.trim(),
           ephemeral: true,
         });
+      }
+    }
+
+    if (group === 'test') {
+      if (sub === 'live') {
+        await interaction.deferReply({ ephemeral: true });
+        try {
+          const result = await forceTestLiveAnnouncement(interaction.client, {
+            requestedBy: `${interaction.user.tag} (\`${interaction.user.id}\`)`,
+          });
+          return interaction.editReply({ content: result.message });
+        } catch (err) {
+          console.error('[admin test live]', err?.stack || err?.message || err);
+          return interaction.editReply({
+            content: `Klaida: ${String(err?.message || err).slice(0, 260)}`,
+          });
+        }
       }
     }
 
