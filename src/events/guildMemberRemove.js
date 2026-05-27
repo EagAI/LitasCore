@@ -3,10 +3,12 @@ const config = require('../config');
 const { saveMemberRolesBackup } = require('../services/memberRolesBackup');
 const { clearRoleSnapshot } = require('../services/memberRoleSnapshot');
 const { logGuildMemberEvent } = require('../services/userStats');
+const { processMemberLeave } = require('../services/inviteTracking');
 
 module.exports = {
   name: 'guildMemberRemove',
   async execute(member) {
+    await processMemberLeave(member);
     clearRoleSnapshot(member.guild.id, member.id);
     saveMemberRolesBackup(member);
     logGuildMemberEvent(member.guild.id, member.id, 'leave');

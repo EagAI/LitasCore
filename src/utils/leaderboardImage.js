@@ -26,11 +26,11 @@ function font(weight, px) {
   return weight === 'b' ? `bold ${px}px system-ui, sans-serif` : `${px}px system-ui, sans-serif`;
 }
 
-async function resolveEntry(guild, client, row) {
+async function resolveEntry(guild, client, userId) {
   let display = 'Nežinomas narys';
   let avatarUrl = null;
   try {
-    const member = await guild.members.fetch(row.user_id).catch(() => null);
+    const member = await guild.members.fetch(userId).catch(() => null);
     if (member) {
       display = member.displayName || member.user.username;
       avatarUrl = member.user.displayAvatarURL({ extension: 'png', size: 64 });
@@ -40,7 +40,7 @@ async function resolveEntry(guild, client, row) {
   }
   if (!avatarUrl) {
     try {
-      const u = await client.users.fetch(row.user_id).catch(() => null);
+      const u = await client.users.fetch(userId).catch(() => null);
       if (u) {
         display = u.globalName || u.username;
         avatarUrl = u.displayAvatarURL({ extension: 'png', size: 64 });
@@ -73,13 +73,57 @@ const TOP1 = '#ffd447';
 const TOP2 = '#c8d5e8';
 const TOP3 = '#e8a065';
 
-/** Top 15 pagal XP — juodas fonas (vėliau galima įkelti custom BG paveikslą). */
-async function generateLeaderboardImage(guild, client) {
-  const rows = db
+function fetchLeaderboardRows(guildId, mode) {
+  if (mode === 'invites') {
+    return db
+      .prepare(
+        `SELECT user_id, valid_count AS stat_primary, 0 AS stat_secondary
+         FROM invite_stats
+         WHERE guild_id = ? AND valid_count > 0
+         ORDER BY valid_count DESC
+         LIMIT 15`
+      )
+      .all(guildId);
+  }
+  return db
     .prepare(
-      'SELECT user_id, xp, level FROM levels WHERE guild_id = ? ORDER BY xp DESC LIMIT 15'
+      `SELECT user_id, level AS stat_primary, xp AS stat_secondary
+       FROM levels
+       WHERE guild_id = ?
+       ORDER BY xp DESC
+       LIMIT 15`
     )
-    .all(guild.id);
+    .all(guildId);
+}
+
+function getModeLabels(mode) {
+  if (mode === 'invites') {
+    return {
+      title: 'PAKVIETIMŲ LENTELĖ',
+      emptyTitle: 'Pakvietimų lyderių dar nėra',
+      emptySub: 'Pakviesk narius — pradėk kaupti pakvietimus',
+      colRight1: 'PAKVIETIMAI',
+      colRight2: null,
+      footer: 'Top 15 pagal galiojančius pakvietimus',
+      filename: 'pakvietimai-lyderiai.png',
+    };
+  }
+  return {
+    title: 'LYDERIŲ LENTELĖ',
+    emptyTitle: 'Lyderių dar nėra',
+    emptySub: 'Rašyk kanaluose — pradėk rinkti XP',
+    colRight1: 'LYGIS',
+    colRight2: 'XP',
+    footer: 'Top 15 pagal bendrą XP',
+    filename: 'lyderiai.png',
+  };
+}
+
+/** Top 15 pagal XP arba pakvietimus. */
+async function generateLeaderboardImage(guild, client, options = {}) {
+  const mode = options.mode === 'invites' ? 'invites' : 'xp';
+  const labels = getModeLabels(mode);
+  const rows = fetchLeaderboardRows(guild.id, mode);
 
   const W = 940;
   const pad = 40;
@@ -109,10 +153,10 @@ async function generateLeaderboardImage(guild, client) {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffffff';
     ctx.font = font('b', 34);
-    ctx.fillText('Lyderių dar nėra', W / 2, H / 2 - 14);
+    ctx.fillText(labels.emptyTitle, W / 2, H / 2 - 14);
     ctx.font = font('r', 17);
     ctx.fillStyle = 'rgba(255,255,255,0.52)';
-    ctx.fillText('Rašyk kanaluose — pradėk rinkti XP', W / 2, H / 2 + 28);
+    ctx.fillText(labels.emptySub, W / 2, H / 2 + 28);
     return canvas.toBuffer('image/png');
   }
 
@@ -120,7 +164,7 @@ async function generateLeaderboardImage(guild, client) {
 
   ctx.fillStyle = '#ffffff';
   ctx.font = font('b', 34);
-  ctx.fillText('LYDERIŲ LENTELĖ', pad + 6, pad + 46);
+  ctx.fillText(labels.title, pad + 6, pad + 46);
 
   ctx.font = font('r', 14);
   ctx.fillStyle = 'rgba(255,255,255,0.45)';
@@ -130,16 +174,18 @@ async function generateLeaderboardImage(guild, client) {
   const colRank = pad + 10;
   const colAvatar = colRank + 46;
   const colName = colAvatar + 48;
-  const colLevel = W - pad - 200;
-  const colXp = W - pad - 10;
+  const colRight1 = W - pad - (labels.colRight2 ? 200 : 10);
+  const colRight2 = W - pad - 10;
 
   ctx.font = font('r', 11);
   ctx.fillStyle = 'rgba(255,255,255,0.38)';
   ctx.fillText('#', colRank, pad + headerH - 6);
   ctx.fillText('NARY', colName, pad + headerH - 6);
   ctx.textAlign = 'right';
-  ctx.fillText('LYGIS', colLevel, pad + headerH - 6);
-  ctx.fillText('XP', colXp, pad + headerH - 6);
+  ctx.fillText(labels.colRight1, colRight1, pad + headerH - 6);
+  if (labels.colRight2) {
+    ctx.fillText(labels.colRight2, colRight2, pad + headerH - 6);
+  }
   ctx.textAlign = 'left';
 
   ctx.strokeStyle = 'rgba(255,255,255,0.09)';
@@ -150,12 +196,12 @@ async function generateLeaderboardImage(guild, client) {
 
   const resolved = [];
   for (let i = 0; i < rows.length; i++) {
-    const meta = await resolveEntry(guild, client, rows[i]);
+    const meta = await resolveEntry(guild, client, rows[i].user_id);
     resolved.push({
       rank: i + 1,
       ...meta,
-      level: rows[i].level,
-      xp: rows[i].xp,
+      statPrimary: rows[i].stat_primary,
+      statSecondary: rows[i].stat_secondary,
     });
   }
 
@@ -214,11 +260,14 @@ async function generateLeaderboardImage(guild, client) {
     ctx.textAlign = 'right';
     ctx.fillStyle = ACCENT;
     ctx.font = font('b', 16);
-    ctx.fillText(String(e.level), colLevel, y + 22);
-
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.font = font('r', 15);
-    ctx.fillText(Number(e.xp).toLocaleString('lt-LT'), colXp, y + 22);
+    if (mode === 'invites') {
+      ctx.fillText(String(e.statPrimary), colRight1, y + 22);
+    } else {
+      ctx.fillText(String(e.statPrimary), colRight1, y + 22);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.font = font('r', 15);
+      ctx.fillText(Number(e.statSecondary).toLocaleString('lt-LT'), colRight2, y + 22);
+    }
     ctx.textAlign = 'left';
 
     y += rowH;
@@ -227,9 +276,9 @@ async function generateLeaderboardImage(guild, client) {
   ctx.textAlign = 'left';
   ctx.font = font('r', 12);
   ctx.fillStyle = 'rgba(255,255,255,0.28)';
-  ctx.fillText('Top 15 pagal bendrą XP', pad + 6, H - pad + 10);
+  ctx.fillText(labels.footer, pad + 6, H - pad + 10);
 
   return canvas.toBuffer('image/png');
 }
 
-module.exports = { generateLeaderboardImage };
+module.exports = { generateLeaderboardImage, getModeLabels };

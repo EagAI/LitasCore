@@ -122,6 +122,10 @@ module.exports = {
   kickChannelSlug: envTrim('KICK_CHANNEL_SLUG'),
   kickUrl: envTrim('KICK_URL'),
 
+  inviteMinAccountAgeDays: parseInt(process.env.INVITE_MIN_ACCOUNT_AGE_DAYS || '7', 10),
+  inviteQuickLeaveHours: parseInt(process.env.INVITE_QUICK_LEAVE_HOURS || '24', 10),
+  inviteMilestoneStep: parseInt(process.env.INVITE_MILESTONE_STEP || '5', 10),
+
   antiPingWindowMs: parseInt(process.env.ANTI_PING_WINDOW_MS || '600000', 10),
   antiPingWarnAt: parseInt(process.env.ANTI_PING_WARN_THRESHOLD || '3', 10),
   antiPingTimeoutAt: parseInt(process.env.ANTI_PING_TIMEOUT_THRESHOLD || '5', 10),

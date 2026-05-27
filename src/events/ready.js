@@ -2,6 +2,7 @@ const { ActivityType } = require('discord.js');
 const { startLiveStreamPoller } = require('../services/liveStreams');
 const { restoreGiveawayTimers } = require('../services/giveaway');
 const { ensureVoiceHub } = require('../services/voiceHub');
+const { seedInviteCache } = require('../services/inviteTracking');
 const config = require('../config');
 
 function updateStatus(client) {
@@ -28,6 +29,9 @@ module.exports = {
       );
     }
     await ensureVoiceHub(client);
+    for (const guild of client.guilds.cache.values()) {
+      await seedInviteCache(guild);
+    }
     startLiveStreamPoller(client);
     restoreGiveawayTimers(client);
     updateStatus(client);

@@ -187,6 +187,35 @@ function setupSchema(db) {
       reason     TEXT,
       PRIMARY KEY (guild_id, user_id)
     );
+
+    CREATE TABLE IF NOT EXISTS invite_cache (
+      guild_id   TEXT NOT NULL,
+      code       TEXT NOT NULL,
+      inviter_id TEXT,
+      uses       INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (guild_id, code)
+    );
+
+    CREATE TABLE IF NOT EXISTS invite_joins (
+      guild_id       TEXT NOT NULL,
+      invitee_id     TEXT NOT NULL,
+      inviter_id     TEXT,
+      invite_code    TEXT,
+      joined_at      INTEGER NOT NULL,
+      status         TEXT NOT NULL DEFAULT 'valid' CHECK (status IN ('valid', 'invalid')),
+      invalid_reason TEXT,
+      PRIMARY KEY (guild_id, invitee_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_invite_joins_inviter
+      ON invite_joins (guild_id, inviter_id, status);
+
+    CREATE TABLE IF NOT EXISTS invite_stats (
+      guild_id        TEXT NOT NULL,
+      user_id         TEXT NOT NULL,
+      valid_count     INTEGER NOT NULL DEFAULT 0,
+      last_milestone  INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (guild_id, user_id)
+    );
   `);
 
   runMigrations(db);

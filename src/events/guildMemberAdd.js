@@ -4,10 +4,12 @@ const { generateWelcomeImage } = require('../utils/welcomeImage');
 const { restoreMemberRolesBackup } = require('../services/memberRolesBackup');
 const { seedRoleSnapshot } = require('../services/memberRoleSnapshot');
 const { logGuildMemberEvent } = require('../services/userStats');
+const { processMemberJoin } = require('../services/inviteTracking');
 
 module.exports = {
   name: 'guildMemberAdd',
   async execute(member) {
+    await processMemberJoin(member);
     logGuildMemberEvent(member.guild.id, member.id, 'join');
     for (const roleId of config.welcomeRoleIds) {
       try {
