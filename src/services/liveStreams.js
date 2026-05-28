@@ -160,6 +160,7 @@ function formatLiveTestError(err) {
 function describeLiveTestCheck(check) {
   if (check.status === 'found') return '✅ rastas LIVE';
   if (check.status === 'empty') return '⚪ tuščia (ne LIVE)';
+  if (check.status === 'stale') return '⚠️ RSS rodo senus streamus (ne LIVE dabar)';
   if (check.status === 'error') return `❌ ${check.error}`;
   if (check.status === 'skipped') return '⏭ praleista (jau rasta /live probe)';
   return '—';
@@ -242,33 +243,44 @@ async function logAdminLiveActionResult(client, data) {
 }
 
 async function fetchLatestVideoFromRssUrl(url) {
+  const entries = await fetchVideosFromRssUrl(url, 1);
+  return entries[0] ?? null;
+}
+
+async function fetchVideosFromRssUrl(url, limit = 8) {
   const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-  if (!res.ok) return null;
+  if (!res.ok) return [];
 
   const xml = await res.text();
   const parsed = parser.parse(xml);
   const rawEntries = parsed?.feed?.entry;
-  if (!rawEntries) return null;
+  if (!rawEntries) return [];
 
-  const entry = Array.isArray(rawEntries) ? rawEntries[0] : rawEntries;
-  const videoId = entry['yt:videoId'] || entry.videoId;
-  if (!videoId) return null;
+  const entries = Array.isArray(rawEntries) ? rawEntries : [rawEntries];
+  const out = [];
 
-  const titleRaw = entry.title;
-  const titleStr =
-    typeof titleRaw === 'string'
-      ? titleRaw
-      : titleRaw && typeof titleRaw === 'object' && titleRaw['#text']
-        ? String(titleRaw['#text'])
-        : 'Naujas video';
+  for (const entry of entries.slice(0, limit)) {
+    const videoId = entry['yt:videoId'] || entry.videoId;
+    if (!videoId) continue;
 
-  return {
-    videoId,
-    title: titleStr,
-    url: `https://www.youtube.com/watch?v=${videoId}`,
-    author: entry.author?.name || 'YouTube',
-    published: entry.published,
-  };
+    const titleRaw = entry.title;
+    const titleStr =
+      typeof titleRaw === 'string'
+        ? titleRaw
+        : titleRaw && typeof titleRaw === 'object' && titleRaw['#text']
+          ? String(titleRaw['#text'])
+          : 'Naujas video';
+
+    out.push({
+      videoId,
+      title: titleStr,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      author: entry.author?.name || 'YouTube',
+      published: entry.published,
+    });
+  }
+
+  return out;
 }
 
 function extractJsonAfterMarker(html, marker) {
@@ -299,27 +311,18 @@ function extractYtInitialPlayerResponse(html) {
   return extractJsonAfterMarker(html, 'ytInitialPlayerResponse = ');
 }
 
-function isYoutubeLiveHtml(html, finalUrl) {
-  if (html.includes('LIVE_STREAM_OFFLINE')) return false;
-  if (/"isLive"\s*:\s*false/.test(html)) return false;
+function isPlayerLiveNow(player) {
+  const details = player?.videoDetails;
+  if (!details) return false;
   return (
-    finalUrl.includes('/watch') ||
-    /"isLive"\s*:\s*true/.test(html) ||
-    /"isLiveNow"\s*:\s*true/.test(html) ||
-    /"style"\s*:\s*"LIVE"/.test(html)
+    details.isLive === true ||
+    player?.microformat?.playerMicroformatRenderer?.liveBroadcastDetails?.isLiveNow === true
   );
 }
 
-function videoFromPlayerResponse(player, html, finalUrl) {
+function videoFromPlayerResponse(player) {
   const details = player?.videoDetails;
-  if (!details?.videoId) return null;
-
-  const isLiveNow =
-    details.isLive === true ||
-    player?.playabilityStatus?.status === 'OK' && details.isLiveContent === true ||
-    player?.microformat?.playerMicroformatRenderer?.liveBroadcastDetails?.isLiveNow === true;
-
-  if (!isLiveNow && !isYoutubeLiveHtml(html, finalUrl)) return null;
+  if (!details?.videoId || !isPlayerLiveNow(player)) return null;
 
   return {
     videoId: details.videoId,
@@ -331,25 +334,44 @@ function videoFromPlayerResponse(player, html, finalUrl) {
 
 function videoFromWatchUrl(finalUrl, html) {
   const videoId = finalUrl.match(/[?&]v=([a-zA-Z0-9_-]{11})/)?.[1];
-  if (!videoId || !isYoutubeLiveHtml(html, finalUrl)) return null;
+  if (!videoId) return null;
 
   const player = extractYtInitialPlayerResponse(html);
-  if (player?.videoDetails?.videoId === videoId && player.videoDetails.title) {
+  if (player?.videoDetails?.videoId === videoId && isPlayerLiveNow(player)) {
     return {
       videoId,
-      title: player.videoDetails.title,
+      title: player.videoDetails.title || 'LIVE',
       url: `https://www.youtube.com/watch?v=${videoId}`,
       author: player.videoDetails.author || 'YouTube',
     };
   }
 
-  const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/)?.[1];
+  return null;
+}
+
+async function inspectYoutubeWatchPage(videoId) {
+  if (!videoId) return null;
+
+  const res = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
+    signal: AbortSignal.timeout(15000),
+    redirect: 'follow',
+    headers: YT_FETCH_HEADERS,
+  });
+  const html = await res.text();
+  const player = extractYtInitialPlayerResponse(html);
+  if (!player?.videoDetails?.videoId) return null;
+
   return {
-    videoId,
-    title: ogTitle ? ogTitle.replace(/ - YouTube$/, '') : 'LIVE',
-    url: `https://www.youtube.com/watch?v=${videoId}`,
-    author: 'YouTube',
+    ...videoFromPlayerResponse(player),
+    isLiveNow: isPlayerLiveNow(player),
   };
+}
+
+async function confirmCurrentlyLive(video) {
+  if (!video?.videoId) return null;
+  const inspected = await inspectYoutubeWatchPage(video.videoId);
+  if (!inspected?.isLiveNow) return null;
+  return verifyYoutubeVideoViaOembed(inspected);
 }
 
 async function verifyYoutubeVideoViaOembed(video) {
@@ -389,35 +411,49 @@ async function probeYoutubeLivePage(ytChannelId) {
   const finalUrl = res.url || '';
   const html = await res.text();
 
-  if (!isYoutubeLiveHtml(html, finalUrl)) return null;
+  if (html.includes('LIVE_STREAM_OFFLINE') && !finalUrl.includes('/watch')) {
+    return null;
+  }
 
   const player = extractYtInitialPlayerResponse(html);
-  const fromPlayer = player ? videoFromPlayerResponse(player, html, finalUrl) : null;
-  if (fromPlayer) return verifyYoutubeVideoViaOembed(fromPlayer);
+  const fromPlayer = player ? videoFromPlayerResponse(player) : null;
+  if (fromPlayer) return confirmCurrentlyLive(fromPlayer);
 
-  const fromUrl = videoFromWatchUrl(finalUrl, html);
-  if (fromUrl) return verifyYoutubeVideoViaOembed(fromUrl);
+  if (finalUrl.includes('/watch')) {
+    const fromUrl = videoFromWatchUrl(finalUrl, html);
+    if (fromUrl) return confirmCurrentlyLive(fromUrl);
+  }
 
   return null;
 }
 
-async function fetchLatestYoutubeVideoForLive(ytChannelId) {
-  // Bandome kelis YouTube live RSS variantus: kai kurie kanalai/feeds elgiasi skirtingai,
-  // o tikslas — pagauti LIVE pradžią žymiai anksčiau nei standartinis RSS.
+async function fetchCurrentlyLiveFromRss(ytChannelId) {
   const liveUrls = [
     `${RSS_BASE}${ytChannelId}&live=1`,
     `${RSS_BASE}${ytChannelId}&activity_types=live`,
   ];
 
+  const seen = new Set();
+  const candidates = [];
+
   for (const url of liveUrls) {
     try {
-      const v = await fetchLatestVideoFromRssUrl(url);
-      if (v?.videoId) return verifyYoutubeVideoViaOembed(v);
+      for (const entry of await fetchVideosFromRssUrl(url, 8)) {
+        if (seen.has(entry.videoId)) continue;
+        seen.add(entry.videoId);
+        candidates.push(entry);
+      }
     } catch (_) {
-      // next variantas
+      /* next feed */
     }
   }
-  return null;
+
+  for (const candidate of candidates) {
+    const live = await confirmCurrentlyLive(candidate);
+    if (live) return { video: live, hadCandidates: candidates.length > 0 };
+  }
+
+  return { video: null, hadCandidates: candidates.length > 0 };
 }
 
 async function detectYoutubeLive(ytChannelId) {
@@ -443,9 +479,16 @@ async function detectYoutubeLive(ytChannelId) {
     checks.liveRss.status = 'skipped';
   } else {
     try {
-      video = await fetchLatestYoutubeVideoForLive(ytChannelId);
-      checks.liveRss.status = video ? 'found' : 'empty';
-      if (video) source = 'live_rss';
+      const rss = await fetchCurrentlyLiveFromRss(ytChannelId);
+      video = rss.video;
+      if (video) {
+        checks.liveRss.status = 'found';
+        source = 'live_rss';
+      } else if (rss.hadCandidates) {
+        checks.liveRss.status = 'stale';
+      } else {
+        checks.liveRss.status = 'empty';
+      }
     } catch (e) {
       checks.liveRss.status = 'error';
       checks.liveRss.error = formatLiveTestError(e);
