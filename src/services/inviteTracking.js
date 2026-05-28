@@ -3,6 +3,7 @@ const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const db = require('../db');
 const config = require('../config');
 const { withAllowedMentions } = require('../utils/allowedMentions');
+const { resolveUserLabelMap, userLabel } = require('../utils/userDisplay');
 
 const INVITES_IMAGE_PATH = path.join(__dirname, '../assets/invites.png');
 const INVITES_FILE_NAME = 'invites.png';
@@ -275,11 +276,12 @@ function countValidInvites(userId, guildId) {
   return stats?.valid_count ?? 0;
 }
 
-function buildPakvietimaiEmbed(user, guildId, client) {
+async function buildPakvietimaiEmbed(user, guildId, client) {
   const stats = getInviteStats(user.id, guildId);
   const list = getValidInvitesList(user.id, guildId, 15);
   const totalListed = list.length;
   const totalValid = stats.validCount;
+  const guild = client.guilds.cache.get(guildId);
 
   const embed = new EmbedBuilder()
     .setTitle('Tavo pakvietimai')
@@ -299,9 +301,17 @@ function buildPakvietimaiEmbed(user, guildId, client) {
   }
 
   if (list.length > 0) {
+    const labelMap = guild
+      ? await resolveUserLabelMap(
+          guild,
+          list.map(row => row.invitee_id),
+          client
+        )
+      : new Map();
     const lines = list.map(row => {
       const ts = Math.floor(row.joined_at / 1000);
-      return `<@${row.invitee_id}> · <t:${ts}:d>`;
+      const who = guild ? userLabel(labelMap, row.invitee_id) : `\`${row.invitee_id}\``;
+      return `${who} · <t:${ts}:f>`;
     });
     embed.addFields({ name: 'Pakviestieji nariai', value: lines.join('\n'), inline: false });
 

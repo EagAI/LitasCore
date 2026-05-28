@@ -317,7 +317,7 @@ module.exports = {
       const member = await interaction.guild.members.fetch(user.id).catch(() => null);
       try {
         return await interaction.reply({
-          ...buildInitialUserstatsReply(user, interaction.guild, member),
+          ...(await buildInitialUserstatsReply(user, interaction.guild, member)),
         });
       } catch (err) {
         console.error('[admin userstats]', err?.stack || err?.message || err);

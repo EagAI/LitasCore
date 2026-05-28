@@ -12,7 +12,7 @@ module.exports = {
       return interaction.reply({ content: 'Komanda galima tik serveryje.', ephemeral: true });
     }
 
-    const embed = buildPakvietimaiEmbed(interaction.user, interaction.guild.id, interaction.client);
+    const embed = await buildPakvietimaiEmbed(interaction.user, interaction.guild.id, interaction.client);
     return interaction.reply(withAllowedMentions({ embeds: [embed], ephemeral: true }));
   },
 };

@@ -16,10 +16,13 @@ const {
   getTrackingSince,
 } = require('./inviteTracking');
 const { withAllowedMentions } = require('../utils/allowedMentions');
+const { resolveUserLabelMap, userLabel } = require('../utils/userDisplay');
 
 const PREFIX = 'usrst';
 /** description max ~ Discord 4096; paliekam vietos footer puslapiui */
 const DESC_CHAR_BUDGET = 3800;
+/** Pakvietimų sąraše viename puslapyje */
+const INVITES_PER_PAGE = 5;
 
 const USERSTATS_VIEWS = {
   overview: { label: 'Apžvalga', description: 'Paskyra, rolės, santrauka' },
@@ -94,8 +97,14 @@ function when(atMs) {
   return `<t:${u}:f> · <t:${u}:R>`;
 }
 
+function whenDate(atMs) {
+  const u = Math.floor(Number(atMs) / 1000);
+  if (!Number.isFinite(u)) return '—';
+  return `<t:${u}:f>`;
+}
+
 /** Grąžina eilutes pagal pasirinktą skiltį. */
-function collectUserstatsLines(user, guild, memberMaybe, view = 'overview') {
+async function collectUserstatsLines(user, guild, memberMaybe, view = 'overview') {
   const guildId = guild.id;
   const events = fetchEvents(guildId, user.id);
   const { completed, openJoin } = analyzeSessions(events);
@@ -249,12 +258,70 @@ function collectUserstatsLines(user, guild, memberMaybe, view = 'overview') {
     }
   }
 
-  if (viewKey === 'invites') {
-    const invitedBy = getInviteRecordForInvitee(guildId, user.id);
-    const validTotal = countInvitesByInviter(guildId, user.id, 'valid');
-    const invalidTotal = countInvitesByInviter(guildId, user.id, 'invalid');
-    const sinceTs = Math.floor(getTrackingSince() / 1000);
+  const viewLabel = USERSTATS_VIEWS[viewKey]?.label ?? 'Apžvalga';
 
+  return {
+    lines,
+    titleBase: user.globalName || user.username,
+    guildName: guild.name,
+    view: viewKey,
+    viewLabel,
+  };
+}
+
+function loadInviteListData(guildId, userId) {
+  const inviteStats = getInviteStats(userId, guildId);
+  const validTotal = countInvitesByInviter(guildId, userId, 'valid');
+  const invalidTotal = countInvitesByInviter(guildId, userId, 'invalid');
+  const validList =
+    validTotal > 0
+      ? getInvitesByInviter(guildId, userId, { limit: validTotal, status: 'valid' })
+      : [];
+  const invalidList =
+    invalidTotal > 0
+      ? getInvitesByInviter(guildId, userId, { limit: invalidTotal, status: 'invalid' })
+      : [];
+  const allItems = [
+    ...validList.map(row => ({ kind: 'valid', row })),
+    ...invalidList.map(row => ({ kind: 'invalid', row })),
+  ];
+
+  return {
+    inviteStats,
+    validTotal,
+    invalidTotal,
+    validList,
+    invalidList,
+    allItems,
+    invitedBy: getInviteRecordForInvitee(guildId, userId),
+  };
+}
+
+function countInvitesPages(allItems) {
+  if (!allItems.length) return 1;
+  return Math.ceil(allItems.length / INVITES_PER_PAGE);
+}
+
+async function collectInvitesPageLines(user, guild, pageZeroBased) {
+  const guildId = guild.id;
+  const { inviteStats, validTotal, invalidTotal, allItems, invitedBy } = loadInviteListData(
+    guildId,
+    user.id
+  );
+  const pageCount = countInvitesPages(allItems);
+  const page = Math.max(0, Math.min(pageZeroBased, pageCount - 1));
+  const start = page * INVITES_PER_PAGE;
+  const slice = allItems.slice(start, start + INVITES_PER_PAGE);
+
+  const labelIds = [];
+  if (page === 0 && invitedBy?.inviter_id) labelIds.push(invitedBy.inviter_id);
+  for (const item of slice) labelIds.push(item.row.invitee_id);
+  const inviteLabels = await resolveUserLabelMap(guild, labelIds, guild.client);
+
+  const lines = [];
+  const sinceTs = Math.floor(getTrackingSince() / 1000);
+
+  if (page === 0) {
     lines.push('**Pakvietimai**');
     lines.push(
       [
@@ -267,11 +334,11 @@ function collectUserstatsLines(user, guild, memberMaybe, view = 'overview') {
         '```',
         '',
         `_Sekama nuo <t:${sinceTs}:D>; senesni pakvietimai neįtraukti._`,
+        '',
+        '**Kas pakvietė šį narį**',
       ].join('\n')
     );
 
-    lines.push('');
-    lines.push('**Kas pakvietė šį narį**');
     if (!invitedBy) {
       lines.push('_Nėra įrašo (prisijungė prieš sekimo pradžią arba ne per invite)._');
     } else if (invitedBy.inviter_id) {
@@ -281,7 +348,7 @@ function collectUserstatsLines(user, guild, memberMaybe, view = 'overview') {
           : `neįskaitytas (${invitedBy.invalid_reason || '—'})`;
       lines.push(
         [
-          `<@${invitedBy.inviter_id}> · ${when(invitedBy.joined_at)}`,
+          `${userLabel(inviteLabels, invitedBy.inviter_id)} · ${whenDate(invitedBy.joined_at)}`,
           `Būsena: **${statusNote}**`,
           invitedBy.invite_code ? `Invite kodas: \`${invitedBy.invite_code}\`` : '',
         ]
@@ -290,49 +357,52 @@ function collectUserstatsLines(user, guild, memberMaybe, view = 'overview') {
       );
     } else {
       lines.push(
-        `_Pakvietėjas nežinomas · ${when(invitedBy.joined_at)} · ${invitedBy.invalid_reason || 'unknown_inviter'}_`
+        `_Pakvietėjas nežinomas · ${whenDate(invitedBy.joined_at)} · ${invitedBy.invalid_reason || 'unknown_inviter'}_`
       );
     }
+  } else {
+    lines.push(`**Pakvietimai** · _puslapis ${page + 1}/${pageCount}_`);
+  }
 
-    lines.push('');
-    lines.push(`**Ką pakvietė (${validTotal} galiojančių)**`);
-    const validList = getInvitesByInviter(guildId, user.id, { limit: 50, status: 'valid' });
-    if (validList.length === 0) {
-      lines.push('_Galiojančių pakvietimų nėra._');
-    } else {
-      for (const row of validList) {
-        const ts = Math.floor(row.joined_at / 1000);
-        lines.push(`• <@${row.invitee_id}> · <t:${ts}:f> · <t:${ts}:R>`);
-      }
-      if (validTotal > validList.length) {
-        lines.push(`_… ir dar ${validTotal - validList.length}._`);
-      }
-    }
-
-    if (invalidTotal > 0) {
+  if (slice.length === 0) {
+    if (page === 0) {
       lines.push('');
-      lines.push(`**Neįskaityti pakvietimai (${invalidTotal})**`);
-      const invalidList = getInvitesByInviter(guildId, user.id, { limit: 20, status: 'invalid' });
-      for (const row of invalidList) {
-        const ts = Math.floor(row.joined_at / 1000);
-        lines.push(
-          `• <@${row.invitee_id}> · <t:${ts}:d> · _${row.invalid_reason || '—'}_`
-        );
+      lines.push('_Pakviestų narių sąraše nieko nėra._');
+    }
+  } else {
+    let prevKind = start > 0 ? allItems[start - 1].kind : null;
+    for (const item of slice) {
+      if (item.kind === 'valid' && prevKind !== 'valid') {
+        lines.push('');
+        lines.push(`**Ką pakvietė (${validTotal} galiojančių)**`);
       }
-      if (invalidTotal > invalidList.length) {
-        lines.push(`_… ir dar ${invalidTotal - invalidList.length}._`);
+      if (item.kind === 'invalid' && prevKind !== 'invalid') {
+        lines.push('');
+        lines.push(`**Neįskaityti pakvietimai (${invalidTotal})**`);
+      }
+      prevKind = item.kind;
+
+      const ts = Math.floor(item.row.joined_at / 1000);
+      if (item.kind === 'valid') {
+        lines.push(
+          `• ${userLabel(inviteLabels, item.row.invitee_id)} · <t:${ts}:f>`
+        );
+      } else {
+        lines.push(
+          `• ${userLabel(inviteLabels, item.row.invitee_id)} · <t:${ts}:f> · _${item.row.invalid_reason || '—'}_`
+        );
       }
     }
   }
-
-  const viewLabel = USERSTATS_VIEWS[viewKey]?.label ?? 'Apžvalga';
 
   return {
     lines,
     titleBase: user.globalName || user.username,
     guildName: guild.name,
-    view: viewKey,
-    viewLabel,
+    view: 'invites',
+    viewLabel: USERSTATS_VIEWS.invites.label,
+    pageCount,
+    page,
   };
 }
 
@@ -370,10 +440,43 @@ function splitLinesIntoPageDescriptions(lines) {
   return pages.length ? pages : ['_Tuščia._'];
 }
 
-function buildPagedEmbeds(user, guild, memberMaybe, avatarUrl, view = 'overview') {
+async function buildPagedEmbeds(user, guild, memberMaybe, avatarUrl, view = 'overview', pageZeroBased = 0) {
+  const safeView = USERSTATS_VIEWS[view] ? view : 'overview';
+
+  if (safeView === 'invites') {
+    let collected;
+    try {
+      collected = await collectInvitesPageLines(user, guild, pageZeroBased);
+    } catch (err) {
+      console.error('[userStats] collectInvitesPageLines:', err?.stack || err?.message || err);
+      collected = {
+        lines: [`Klaida kraunant pakvietimus: \`${String(err?.message || err).slice(0, 180)}\``],
+        titleBase: user.globalName || user.username || 'Vartotojas',
+        guildName: guild.name || 'Serveris',
+        view: 'invites',
+        viewLabel: USERSTATS_VIEWS.invites.label,
+        pageCount: 1,
+        page: 0,
+      };
+    }
+
+    const desc = collected.lines.join('\n').slice(0, 4000);
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle(`Nario statistika — ${collected.titleBase}`)
+      .setDescription(desc || '_Tuščia._')
+      .setTimestamp()
+      .setFooter({
+        text: `${collected.guildName} · ${collected.viewLabel} · staff · ${collected.page + 1}/${collected.pageCount}`,
+      })
+      .setThumbnail(avatarUrl || user.displayAvatarURL({ size: 128 }));
+
+    return { embeds: [embed], pageCount: collected.pageCount, view: 'invites' };
+  }
+
   let collected;
   try {
-    collected = collectUserstatsLines(user, guild, memberMaybe, view);
+    collected = await collectUserstatsLines(user, guild, memberMaybe, safeView);
   } catch (err) {
     console.error('[userStats] collectUserstatsLines:', err?.stack || err?.message || err);
     collected = {
@@ -454,10 +557,17 @@ function viewSelectRow(guildId, targetUserId, currentView) {
 /**
  * Reply payload (/admin userstats atsako viešai kanale).
  */
-function buildInitialUserstatsReply(user, guild, memberMaybe, view = 'overview', pageZeroBased = 0) {
+async function buildInitialUserstatsReply(user, guild, memberMaybe, view = 'overview', pageZeroBased = 0) {
   const avatarUrl = user.displayAvatarURL({ size: 128 });
   const safeView = USERSTATS_VIEWS[view] ? view : 'overview';
-  const { embeds, pageCount } = buildPagedEmbeds(user, guild, memberMaybe, avatarUrl, safeView);
+  const { embeds, pageCount } = await buildPagedEmbeds(
+    user,
+    guild,
+    memberMaybe,
+    avatarUrl,
+    safeView,
+    pageZeroBased
+  );
 
   if (!embeds.length) {
     return {
@@ -471,10 +581,11 @@ function buildInitialUserstatsReply(user, guild, memberMaybe, view = 'overview',
     };
   }
 
-  const p = Math.max(0, Math.min(pageZeroBased, embeds.length - 1));
+  const p = Math.max(0, Math.min(pageZeroBased, pageCount - 1));
+  const displayEmbed = safeView === 'invites' ? embeds[0] : embeds[p];
 
   return withAllowedMentions({
-    embeds: [embeds[p]],
+    embeds: [displayEmbed],
     components: [
       viewSelectRow(guild.id, user.id, safeView),
       pagingRowButtons(guild.id, user.id, safeView, p, pageCount),
@@ -490,12 +601,14 @@ async function updateUserstatsMessage(interaction, targetUserId, view, pageRaw) 
 
   const member = await interaction.guild.members.fetch(targetUserId).catch(() => null);
   const safeView = USERSTATS_VIEWS[view] ? view : 'overview';
-  const { embeds: allEmbeds, pageCount } = buildPagedEmbeds(
+  const p = Math.max(0, pageRaw);
+  const { embeds: allEmbeds, pageCount } = await buildPagedEmbeds(
     user,
     interaction.guild,
     member,
     user.displayAvatarURL({ size: 128 }),
-    safeView
+    safeView,
+    p
   );
 
   if (!allEmbeds.length) {
@@ -516,13 +629,13 @@ async function updateUserstatsMessage(interaction, targetUserId, view, pageRaw) 
     return;
   }
 
-  const p = Math.max(0, Math.min(pageRaw, pageCount - 1));
+  const safePage = Math.max(0, Math.min(p, pageCount - 1));
   await interaction.update(
     withAllowedMentions({
-      embeds: [allEmbeds[p]],
+      embeds: [allEmbeds[safeView === 'invites' ? 0 : safePage]],
       components: [
         viewSelectRow(interaction.guildId, targetUserId, safeView),
-        pagingRowButtons(interaction.guildId, targetUserId, safeView, p, pageCount),
+        pagingRowButtons(interaction.guildId, targetUserId, safeView, safePage, pageCount),
       ],
     })
   );
