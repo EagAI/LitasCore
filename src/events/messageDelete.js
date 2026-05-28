@@ -1,5 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const config = require('../config');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 module.exports = {
   name: 'messageDelete',
@@ -24,6 +25,6 @@ module.exports = {
       .setTimestamp()
       .setFooter({ text: `ID: ${message.id}` });
 
-    await logChannel.send({ embeds: [embed] });
+    await logChannel.send(withAllowedMentions({ embeds: [embed] }));
   },
 };

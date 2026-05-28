@@ -29,6 +29,14 @@ module.exports = {
       if (interaction.customId === 'ticket_modal') return handleTicketModal(interaction);
     }
 
+    if (interaction.isStringSelectMenu()) {
+      const id = interaction.customId || '';
+      if (id.startsWith('usrst|select|')) {
+        const { handleUserstatsViewSelect } = require('../services/userStats');
+        return handleUserstatsViewSelect(interaction);
+      }
+    }
+
     if (interaction.isButton()) {
       const id = interaction.customId || '';
       if (id.startsWith('usrst|')) {

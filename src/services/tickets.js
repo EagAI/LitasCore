@@ -12,6 +12,7 @@ const {
 const db = require('../db');
 const config = require('../config');
 const { isStaff } = require('../utils/permissions');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 async function handleTicketOpen(interaction) {
   const existing = db
@@ -110,7 +111,13 @@ async function handleTicketModal(interaction) {
       .setEmoji('🔒')
   );
 
-  await channel.send({ content: `${interaction.user}`, embeds: [embed], components: [row] });
+  await channel.send(
+    withAllowedMentions({
+      content: `${interaction.user}`,
+      embeds: [embed],
+      components: [row],
+    })
+  );
   return interaction.editReply({ content: `Tiketas sukurtas: ${channel}` });
 }
 

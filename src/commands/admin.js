@@ -6,6 +6,7 @@ const {
   AttachmentBuilder,
 } = require('discord.js');
 const { isStaff } = require('../utils/permissions');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 const FETCH_HEADERS = {
   'User-Agent':
@@ -28,6 +29,7 @@ const {
   removeXp,
   afterXpGainAnnouncements,
   buildLevelCheckEmbed,
+  syncGuildLevelRoles,
 } = require('../services/levels');
 const { buildInitialUserstatsReply } = require('../services/userStats');
 const { adminUpsertLeaver, adminRemoveLeaver } = require('../services/guildLeavers');
@@ -110,7 +112,7 @@ module.exports = {
     .addSubcommand(sub =>
       sub
         .setName('userstats')
-        .setDescription('Detali nario statistika: istorija, laikas serveryje, lygiai…')
+        .setDescription('Nario statistika su skiltimis (apžvalga, lygiai, laikas, pakvietimai)')
         .addUserOption(opt =>
           opt.setName('narys').setDescription('Vartotojas').setRequired(true)
         )
@@ -225,6 +227,18 @@ module.exports = {
             .setDescription('Parodyti nario lygį ir XP')
             .addUserOption(opt =>
               opt.setName('narys').setDescription('Vartotojas').setRequired(true)
+            )
+        )
+    )
+    .addSubcommandGroup(group =>
+      group
+        .setName('levelroles')
+        .setDescription('Lygio rolių sinchronizavimas pagal .env')
+        .addSubcommand(sub =>
+          sub
+            .setName('update')
+            .setDescription(
+              'Atnaujinti visų narių lygio roles pagal DB lygį ir LEVEL_ROLES_STACK'
             )
         )
     )
@@ -429,21 +443,68 @@ module.exports = {
       if (sub === 'add') {
         const result = await addXp(member, xpAmt);
         await afterXpGainAnnouncements(member, result);
-        return interaction.reply({
-          content:
-            `**+${xpAmt.toLocaleString('lt-LT')} XP** — ${member}\n` +
-            `Lygis **${result.newLevel}**, XP **${result.newXp.toLocaleString('lt-LT')}**.`,
-          ephemeral: true,
-        });
+        return interaction.reply(
+          withAllowedMentions({
+            content:
+              `**+${xpAmt.toLocaleString('lt-LT')} XP** — ${member}\n` +
+              `Lygis **${result.newLevel}**, XP **${result.newXp.toLocaleString('lt-LT')}**.`,
+            ephemeral: true,
+          })
+        );
       }
 
       if (sub === 'remove') {
         const out = await removeXp(member, xpAmt);
-        return interaction.reply({
-          content:
-            `**-${xpAmt.toLocaleString('lt-LT')} XP** (${member})\n` +
-            `Lygis **${out.newLevel}**, XP **${out.newXp.toLocaleString('lt-LT')}** (buvo ${out.oldLevel} / ${out.oldXp.toLocaleString('lt-LT')}).`,
-          ephemeral: true,
+        return interaction.reply(
+          withAllowedMentions({
+            content:
+              `**-${xpAmt.toLocaleString('lt-LT')} XP** (${member})\n` +
+              `Lygis **${out.newLevel}**, XP **${out.newXp.toLocaleString('lt-LT')}** (buvo ${out.oldLevel} / ${out.oldXp.toLocaleString('lt-LT')}).`,
+            ephemeral: true,
+          })
+        );
+      }
+    }
+
+    if (group === 'levelroles' && sub === 'update') {
+      if (!interaction.guild) {
+        return interaction.reply({ content: 'Tik serveryje.', ephemeral: true });
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+
+      try {
+        const result = await syncGuildLevelRoles(interaction.guild);
+
+        if (!result.ok) {
+          return interaction.editReply({
+            content:
+              '**.env** nėra nustatytų `LEVEL_*_ROLE_ID` rolių — sinchronizuoti nieko.',
+          });
+        }
+
+        const mode = result.stack
+          ? '**stack** (visos pasiektos milestone rolės)'
+          : '**highest** (tik aukščiausia milestone rolė)';
+        const milestones = result.configuredRoles.join(', ');
+
+        let content =
+          `✅ Lygio rolės atnaujintos.\n\n` +
+          `**Režimas:** ${mode}\n` +
+          `**Milestone lygiai:** ${milestones}\n` +
+          `**XP įrašai DB:** ${result.total}\n` +
+          `**Sinchronizuota:** ${result.synced}\n` +
+          `**Praleista (nėra serveryje):** ${result.skipped}`;
+
+        if (result.failures > 0) {
+          content += `\n**Rolės klaidos (teisės / hierarchija):** ${result.failures}`;
+        }
+
+        return interaction.editReply({ content });
+      } catch (err) {
+        console.error('[admin levelroles update]', err?.stack || err?.message || err);
+        return interaction.editReply({
+          content: `Klaida: ${String(err?.message || err).slice(0, 260)}`,
         });
       }
     }

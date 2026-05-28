@@ -3,6 +3,7 @@ const { randomInt } = require('crypto');
 const path = require('path');
 const db = require('../db');
 const config = require('../config');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 const DEFAULT_IMAGE = path.join(__dirname, '../assets/giveaway.png');
 const ATTACHMENT_GIVEAWAY = 'attachment://giveaway.png';
@@ -118,12 +119,17 @@ async function createGiveaway(client, channelId, guildId, prize, winnersCount, d
     ? pingableRoles.map(r => `<@&${r}>`).join(' ')
     : null;
 
-  const msg = await channel.send({
-    content: rolePing,
-    embeds: [embed],
-    components: [row],
-    files: buildFiles(imageUrl),
-  });
+  const msg = await channel.send(
+    withAllowedMentions(
+      {
+        content: rolePing,
+        embeds: [embed],
+        components: [row],
+        files: buildFiles(imageUrl),
+      },
+      { pingRoles: Boolean(rolePing) }
+    )
+  );
   db.prepare('UPDATE giveaways SET message_id = ? WHERE id = ?').run(msg.id, id);
 
   scheduleEnd(client, id, endTime);
@@ -176,7 +182,11 @@ async function endGiveaway(client, id) {
       .setFooter({ text: `Baigėsi • ${totalEntries} dalyvių` })
       .setImage(endImage)
       .setTimestamp();
-    if (msg) await msg.edit({ embeds: [endEmbed], components: [endedRow] });
+    if (msg) {
+      await msg.edit(
+        withAllowedMentions({ embeds: [endEmbed], components: [endedRow] })
+      );
+    }
     return;
   }
 
@@ -193,7 +203,9 @@ async function endGiveaway(client, id) {
     .setImage(endImage)
     .setTimestamp();
 
-  if (msg) await msg.edit({ embeds: [endEmbed], components: [endedRow] });
+  if (msg) {
+    await msg.edit(withAllowedMentions({ embeds: [endEmbed], components: [endedRow] }));
+  }
 
   const e2 = config.emojis;
   const winEmbed = new EmbedBuilder()
@@ -203,7 +215,7 @@ async function endGiveaway(client, id) {
     )
     .setColor(0xed4245);
 
-  await channel.send({ embeds: [winEmbed] });
+  await channel.send(withAllowedMentions({ embeds: [winEmbed] }));
 }
 
 async function rerollGiveaway(client, id) {
@@ -222,7 +234,7 @@ async function rerollGiveaway(client, id) {
   if (!channel) return;
 
   const e3 = config.emojis;
-  await channel.send(`🔄 Reroll! Nauji laimėtojai: ${mentions} ${e3.giveawayWinner}`);
+  await channel.send(withAllowedMentions({ content: `🔄 Reroll! Nauji laimėtojai: ${mentions} ${e3.giveawayWinner}` }, { pingUsers: true }));
 }
 
 async function restoreGiveawayTimers(client) {
@@ -253,10 +265,12 @@ async function handleGiveawayEnter(interaction) {
     const hasRole = requiredRoles.some(r => memberRoles.has(r));
     if (!hasRole) {
       const roleMentions = requiredRoles.map(r => `<@&${r}>`).join(', ');
-      return interaction.reply({
-        content: `❌ Norint dalyvauti, reikalinga rolė: ${roleMentions}`,
-        ephemeral: true,
-      });
+      return interaction.reply(
+        withAllowedMentions({
+          content: `❌ Norint dalyvauti, reikalinga rolė: ${roleMentions}`,
+          ephemeral: true,
+        })
+      );
     }
   }
 

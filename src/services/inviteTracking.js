@@ -2,6 +2,7 @@ const path = require('path');
 const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const db = require('../db');
 const config = require('../config');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 const INVITES_IMAGE_PATH = path.join(__dirname, '../assets/invites.png');
 const INVITES_FILE_NAME = 'invites.png';
@@ -137,7 +138,9 @@ async function announceInviteMilestone(member, count) {
     .setColor(0xe03030);
   embedSetInvitesThumbnail(embed);
 
-  await channel.send({ embeds: [embed], files: invitesAttachmentFiles() });
+  await channel.send(
+    withAllowedMentions({ embeds: [embed], files: invitesAttachmentFiles() })
+  );
 }
 
 function maybeAnnounceMilestones(guildId, inviterId, member) {
@@ -320,6 +323,58 @@ function buildPakvietimaiEmbed(user, guildId, client) {
   return embed;
 }
 
+function getInviteRecordForInvitee(guildId, inviteeId) {
+  return db
+    .prepare(
+      `SELECT inviter_id, invite_code, joined_at, status, invalid_reason
+       FROM invite_joins WHERE guild_id = ? AND invitee_id = ?`
+    )
+    .get(guildId, inviteeId);
+}
+
+function getInvitesByInviter(guildId, inviterId, { limit = 50, status = null } = {}) {
+  if (status) {
+    return db
+      .prepare(
+        `SELECT invitee_id, joined_at, status, invalid_reason
+         FROM invite_joins
+         WHERE guild_id = ? AND inviter_id = ? AND status = ?
+         ORDER BY joined_at DESC
+         LIMIT ?`
+      )
+      .all(guildId, inviterId, status, limit);
+  }
+  return db
+    .prepare(
+      `SELECT invitee_id, joined_at, status, invalid_reason
+       FROM invite_joins
+       WHERE guild_id = ? AND inviter_id = ?
+       ORDER BY joined_at DESC
+       LIMIT ?`
+    )
+    .all(guildId, inviterId, limit);
+}
+
+function countInvitesByInviter(guildId, inviterId, status = null) {
+  if (status) {
+    return (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM invite_joins
+           WHERE guild_id = ? AND inviter_id = ? AND status = ?`
+        )
+        .get(guildId, inviterId, status)?.c ?? 0
+    );
+  }
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM invite_joins WHERE guild_id = ? AND inviter_id = ?`
+      )
+      .get(guildId, inviterId)?.c ?? 0
+  );
+}
+
 module.exports = {
   seedInviteCache,
   syncInviteCache,
@@ -330,4 +385,7 @@ module.exports = {
   countValidInvites,
   buildPakvietimaiEmbed,
   getTrackingSince,
+  getInviteRecordForInvitee,
+  getInvitesByInviter,
+  countInvitesByInviter,
 };

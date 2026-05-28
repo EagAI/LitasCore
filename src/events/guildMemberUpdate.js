@@ -2,6 +2,7 @@ const { EmbedBuilder } = require('discord.js');
 const config = require('../config');
 const { isRoleBackupRestoreAddingRoles } = require('../services/memberRolesBackup');
 const { diffRolesSinceSnapshot } = require('../services/memberRoleSnapshot');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 module.exports = {
   name: 'guildMemberUpdate',
@@ -23,7 +24,7 @@ module.exports = {
           )
           .setTimestamp();
 
-        await boostChannel.send({ embeds: [embed] });
+        await boostChannel.send(withAllowedMentions({ embeds: [embed] }));
       }
     }
 
@@ -65,6 +66,6 @@ module.exports = {
       )
       .setTimestamp();
 
-    await logChannel.send({ embeds: [embed] });
+    await logChannel.send(withAllowedMentions({ embeds: [embed] }));
   },
 };

@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
 const { isStaff } = require('../utils/permissions');
 const config = require('../config');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -64,7 +65,7 @@ module.exports = {
           `Buvo ištrinta **${totalMsgs}** žinutė(-s) ir **${totalImages}** nuotrauka(-os).`
         )
         .setTimestamp();
-      await logChannel.send({ embeds: [embed] });
+      await logChannel.send(withAllowedMentions({ embeds: [embed] }));
     }
   },
 };

@@ -3,6 +3,7 @@ const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const db = require('../db');
 const config = require('../config');
 const { addBalance } = require('./economy');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 const { levelRoles } = config;
 
 const LEVELUP_IMAGE_PATH = path.join(__dirname, '../assets/levelup.png');
@@ -116,7 +117,9 @@ async function postMilestoneLevelUp(member, level) {
     .setColor(role?.color || 0xe03030);
   embedSetLevelUpThumbnail(embed);
 
-  await channel.send({ embeds: [embed], files: levelUpAttachmentFiles() });
+  await channel.send(
+    withAllowedMentions({ embeds: [embed], files: levelUpAttachmentFiles() })
+  );
   return true;
 }
 
@@ -131,7 +134,9 @@ async function announceNonMilestoneLevelUp(member, newLevel) {
     .setColor(0xe03030);
   embedSetLevelUpThumbnail(embed);
 
-  await target.send({ embeds: [embed], files: levelUpAttachmentFiles() });
+  await target.send(
+    withAllowedMentions({ embeds: [embed], files: levelUpAttachmentFiles() })
+  );
 }
 
 /** Po `addXp`: jei pakilo lygis ir ne milestone embed – išsiųsti paprastą level-up. */
@@ -223,18 +228,23 @@ function getRewardRole(level) {
 }
 
 async function assignLevelRoles(member, level) {
+  let failures = 0;
+  const fail = () => {
+    failures++;
+  };
+
   if (config.levelRolesStack) {
     for (const { level: need, roleId } of levelRoles) {
       if (!roleId) continue;
       if (level >= need) {
         if (!member.roles.cache.has(roleId)) {
-          await member.roles.add(roleId).catch(() => {});
+          await member.roles.add(roleId).catch(fail);
         }
       } else if (member.roles.cache.has(roleId)) {
-        await member.roles.remove(roleId).catch(() => {});
+        await member.roles.remove(roleId).catch(fail);
       }
     }
-    return;
+    return { failures };
   }
 
   const allRoleIds = levelRoles.map(r => r.roleId).filter(Boolean);
@@ -243,14 +253,51 @@ async function assignLevelRoles(member, level) {
   for (const roleId of allRoleIds) {
     if (reward && roleId === reward.roleId) {
       if (!member.roles.cache.has(roleId)) {
-        await member.roles.add(roleId).catch(() => {});
+        await member.roles.add(roleId).catch(fail);
       }
-    } else {
-      if (member.roles.cache.has(roleId)) {
-        await member.roles.remove(roleId).catch(() => {});
-      }
+    } else if (member.roles.cache.has(roleId)) {
+      await member.roles.remove(roleId).catch(fail);
     }
   }
+  return { failures };
+}
+
+/** Visiems serverio nariams (su XP įrašu DB) pritaiko lygio roles pagal .env. */
+async function syncGuildLevelRoles(guild) {
+  if (!levelRoles.length) {
+    return { ok: false, reason: 'no_roles_configured' };
+  }
+
+  const rows = db
+    .prepare('SELECT user_id, xp FROM levels WHERE guild_id = ?')
+    .all(guild.id);
+
+  let synced = 0;
+  let skipped = 0;
+  let failures = 0;
+
+  for (const row of rows) {
+    const member = await guild.members.fetch(row.user_id).catch(() => null);
+    if (!member) {
+      skipped++;
+      continue;
+    }
+
+    const level = getLevelFromXp(row.xp);
+    const result = await assignLevelRoles(member, level);
+    failures += result.failures;
+    synced++;
+  }
+
+  return {
+    ok: true,
+    total: rows.length,
+    synced,
+    skipped,
+    failures,
+    stack: config.levelRolesStack,
+    configuredRoles: levelRoles.map(r => r.level),
+  };
 }
 
 async function buildRankEmbed(member) {
@@ -291,7 +338,7 @@ function getTestLevelUpPayload(member, displayLevel) {
     )
     .setColor(0xe03030);
   embedSetLevelUpThumbnail(embed);
-  return { embeds: [embed], files: levelUpAttachmentFiles() };
+  return withAllowedMentions({ embeds: [embed], files: levelUpAttachmentFiles() });
 }
 
 module.exports = {
@@ -305,4 +352,5 @@ module.exports = {
   removeXp,
   afterXpGainAnnouncements,
   getTestLevelUpPayload,
+  syncGuildLevelRoles,
 };

@@ -4,6 +4,7 @@ const { saveMemberRolesBackup } = require('../services/memberRolesBackup');
 const { clearRoleSnapshot } = require('../services/memberRoleSnapshot');
 const { logGuildMemberEvent } = require('../services/userStats');
 const { processMemberLeave } = require('../services/inviteTracking');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 module.exports = {
   name: 'guildMemberRemove',
@@ -40,7 +41,7 @@ module.exports = {
       )
       .setTimestamp();
 
-    await logChannel.send({ embeds: [embed] });
+    await logChannel.send(withAllowedMentions({ embeds: [embed] }));
 
     member.guild.client.user.setPresence({
       activities: [{ name: `Iš viso mūsų: ${member.guild.memberCount}`, type: ActivityType.Watching }],

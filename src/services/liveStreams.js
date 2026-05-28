@@ -7,6 +7,7 @@ const {
 const { XMLParser } = require('fast-xml-parser');
 const db = require('../db');
 const config = require('../config');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 const RSS_BASE = 'https://www.youtube.com/feeds/videos.xml?channel_id=';
 
@@ -415,11 +416,13 @@ async function maybeAnnounceYoutubeVideo(client, video) {
 
   announcingVideoKeys.add(videoKey);
   try {
-    await announceChannel.send({
-      content: announceContent,
-      embeds: [buildYoutubeEmbed(video)],
-      components: [buildWatchButtons(video.url)],
-    });
+    await announceChannel.send(
+      withAllowedMentions({
+        content: announceContent,
+        embeds: [buildYoutubeEmbed(video)],
+        components: [buildWatchButtons(video.url)],
+      })
+    );
 
     await logYoutubeAnnouncementDebug(client, video);
 
@@ -550,11 +553,13 @@ async function forceTestLiveAnnouncement(client, options = {}) {
       });
     }
 
-    await announceChannel.send({
-      content: adminLiveTestContent,
-      embeds: [buildYoutubeEmbed(video)],
-      components: [buildWatchButtons(video.url)],
-    });
+    await announceChannel.send(
+      withAllowedMentions({
+        content: adminLiveTestContent,
+        embeds: [buildYoutubeEmbed(video)],
+        components: [buildWatchButtons(video.url)],
+      })
+    );
 
     const sourceLabel = LIVE_TEST_SOURCE_LABELS[source] || source;
     return finish({

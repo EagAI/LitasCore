@@ -1,5 +1,6 @@
 const { EmbedBuilder, AuditLogEvent } = require('discord.js');
 const config = require('../config');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 module.exports = {
   name: 'guildBanRemove',
@@ -23,6 +24,6 @@ module.exports = {
       )
       .setTimestamp();
 
-    await logChannel.send({ embeds: [embed] });
+    await logChannel.send(withAllowedMentions({ embeds: [embed] }));
   },
 };

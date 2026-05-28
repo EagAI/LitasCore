@@ -5,6 +5,7 @@ const { restoreMemberRolesBackup } = require('../services/memberRolesBackup');
 const { seedRoleSnapshot } = require('../services/memberRoleSnapshot');
 const { logGuildMemberEvent } = require('../services/userStats');
 const { processMemberJoin } = require('../services/inviteTracking');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 module.exports = {
   name: 'guildMemberAdd',
@@ -40,7 +41,9 @@ module.exports = {
         await channel.send({ files: [attachment] });
       } catch (err) {
         console.error('[welcome] Image generation failed:', err?.message || err, err?.stack);
-        await channel.send(`Sveiki atvykę į serverį, ${member}! 🎉`);
+        await channel.send(
+          withAllowedMentions({ content: `Sveiki atvykę į serverį, ${member}! 🎉` }, { pingUsers: true })
+        );
       }
     }
 

@@ -1,5 +1,6 @@
 const { EmbedBuilder, AuditLogEvent } = require('discord.js');
 const config = require('../config');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 const TRACKED = new Set([
   AuditLogEvent.MemberKick,
@@ -88,7 +89,7 @@ module.exports = {
         embed.addFields({ name: 'Priežastis', value: entry.reason, inline: false });
       }
 
-      await logChannel.send({ embeds: [embed] });
+      await logChannel.send(withAllowedMentions({ embeds: [embed] }));
       return;
     }
 
@@ -122,6 +123,6 @@ module.exports = {
       )
       .setTimestamp();
 
-    await logChannel.send({ embeds: [embed] });
+    await logChannel.send(withAllowedMentions({ embeds: [embed] }));
   },
 };
