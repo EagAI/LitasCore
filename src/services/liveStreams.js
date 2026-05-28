@@ -271,6 +271,111 @@ async function fetchLatestVideoFromRssUrl(url) {
   };
 }
 
+function extractJsonAfterMarker(html, marker) {
+  const start = html.indexOf(marker);
+  if (start === -1) return null;
+  const jsonStart = start + marker.length;
+  if (html[jsonStart] !== '{') return null;
+
+  let depth = 0;
+  for (let i = jsonStart; i < html.length; i++) {
+    const ch = html[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(html.slice(jsonStart, i + 1));
+        } catch (_) {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function extractYtInitialPlayerResponse(html) {
+  return extractJsonAfterMarker(html, 'ytInitialPlayerResponse = ');
+}
+
+function isYoutubeLiveHtml(html, finalUrl) {
+  if (html.includes('LIVE_STREAM_OFFLINE')) return false;
+  if (/"isLive"\s*:\s*false/.test(html)) return false;
+  return (
+    finalUrl.includes('/watch') ||
+    /"isLive"\s*:\s*true/.test(html) ||
+    /"isLiveNow"\s*:\s*true/.test(html) ||
+    /"style"\s*:\s*"LIVE"/.test(html)
+  );
+}
+
+function videoFromPlayerResponse(player, html, finalUrl) {
+  const details = player?.videoDetails;
+  if (!details?.videoId) return null;
+
+  const isLiveNow =
+    details.isLive === true ||
+    player?.playabilityStatus?.status === 'OK' && details.isLiveContent === true ||
+    player?.microformat?.playerMicroformatRenderer?.liveBroadcastDetails?.isLiveNow === true;
+
+  if (!isLiveNow && !isYoutubeLiveHtml(html, finalUrl)) return null;
+
+  return {
+    videoId: details.videoId,
+    title: details.title || 'LIVE',
+    url: `https://www.youtube.com/watch?v=${details.videoId}`,
+    author: details.author || 'YouTube',
+  };
+}
+
+function videoFromWatchUrl(finalUrl, html) {
+  const videoId = finalUrl.match(/[?&]v=([a-zA-Z0-9_-]{11})/)?.[1];
+  if (!videoId || !isYoutubeLiveHtml(html, finalUrl)) return null;
+
+  const player = extractYtInitialPlayerResponse(html);
+  if (player?.videoDetails?.videoId === videoId && player.videoDetails.title) {
+    return {
+      videoId,
+      title: player.videoDetails.title,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      author: player.videoDetails.author || 'YouTube',
+    };
+  }
+
+  const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/)?.[1];
+  return {
+    videoId,
+    title: ogTitle ? ogTitle.replace(/ - YouTube$/, '') : 'LIVE',
+    url: `https://www.youtube.com/watch?v=${videoId}`,
+    author: 'YouTube',
+  };
+}
+
+async function verifyYoutubeVideoViaOembed(video) {
+  if (!video?.videoId) return null;
+
+  const url = `https://www.youtube.com/watch?v=${video.videoId}`;
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`,
+      { signal: AbortSignal.timeout(8000), headers: YT_FETCH_HEADERS }
+    );
+    if (!res.ok) return { ...video, url };
+
+    const data = await res.json();
+    return {
+      videoId: video.videoId,
+      title: data.title || video.title,
+      url,
+      author: data.author_name || video.author || 'YouTube',
+    };
+  } catch (e) {
+    console.warn('[youtube] oEmbed verify:', e?.message || e);
+    return { ...video, url };
+  }
+}
+
 async function probeYoutubeLivePage(ytChannelId) {
   const res = await fetch(
     `https://www.youtube.com/channel/${encodeURIComponent(ytChannelId)}/live`,
@@ -284,34 +389,16 @@ async function probeYoutubeLivePage(ytChannelId) {
   const finalUrl = res.url || '';
   const html = await res.text();
 
-  if (html.includes('LIVE_STREAM_OFFLINE') || /"isLive"\s*:\s*false/.test(html)) {
-    return null;
-  }
+  if (!isYoutubeLiveHtml(html, finalUrl)) return null;
 
-  const videoId =
-    finalUrl.match(/[?&]v=([a-zA-Z0-9_-]{11})/)?.[1] ||
-    html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/)?.[1] ||
-    null;
+  const player = extractYtInitialPlayerResponse(html);
+  const fromPlayer = player ? videoFromPlayerResponse(player, html, finalUrl) : null;
+  if (fromPlayer) return verifyYoutubeVideoViaOembed(fromPlayer);
 
-  if (!videoId) return null;
+  const fromUrl = videoFromWatchUrl(finalUrl, html);
+  if (fromUrl) return verifyYoutubeVideoViaOembed(fromUrl);
 
-  const isLive =
-    finalUrl.includes('/watch') ||
-    /"isLive"\s*:\s*true/.test(html) ||
-    /"style"\s*:\s*"LIVE"/.test(html);
-
-  if (!isLive) return null;
-
-  let title = 'LIVE';
-  const titleMatch = html.match(/"title"\s*:\s*\{"runs":\[\{"text":"([^"]+)"/);
-  if (titleMatch?.[1]) title = titleMatch[1];
-
-  return {
-    videoId,
-    title,
-    url: `https://www.youtube.com/watch?v=${videoId}`,
-    author: 'YouTube',
-  };
+  return null;
 }
 
 async function fetchLatestYoutubeVideoForLive(ytChannelId) {
@@ -325,7 +412,7 @@ async function fetchLatestYoutubeVideoForLive(ytChannelId) {
   for (const url of liveUrls) {
     try {
       const v = await fetchLatestVideoFromRssUrl(url);
-      if (v?.videoId) return v;
+      if (v?.videoId) return verifyYoutubeVideoViaOembed(v);
     } catch (_) {
       // next variantas
     }
@@ -396,6 +483,10 @@ function isYoutubeTitleAlreadyAnnounced(ytChannelId, titleNorm) {
 async function maybeAnnounceYoutubeVideo(client, video) {
   const ytId = config.youtubeChannelId;
   if (!ytId || !video?.videoId) return { posted: false, reason: 'missing_video' };
+
+  const verified = await verifyYoutubeVideoViaOembed(video);
+  if (!verified?.videoId) return { posted: false, reason: 'missing_video' };
+  video = verified;
 
   const announceChannel = config.youtubeAnnounceChannelId
     ? client.channels.cache.get(config.youtubeAnnounceChannelId)
@@ -479,6 +570,9 @@ async function checkYoutubeRss(client) {
   rssInFlight = true;
 
   try {
+    const { video: liveNow } = await detectYoutubeLive(ytId);
+    if (liveNow) return;
+
     const video = await fetchLatestYoutubeVideoFromRss(ytId);
     if (!video) return;
 
