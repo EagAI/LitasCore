@@ -110,9 +110,8 @@ module.exports = {
 
   /** Vienas YouTube kanalo UC… ID RSS skelbimams. */
   youtubeChannelId: envTrim('YOUTUBE_CHANNEL_ID'),
-  youtubeLivePollIntervalMs: parseInt(process.env.YOUTUBE_LIVE_POLL_INTERVAL_MS || '90000', 10),
-  youtubeRssPollIntervalMs: parseInt(process.env.YOUTUBE_RSS_POLL_INTERVAL_MS || '300000', 10),
-  livePollIntervalMs: parseInt(process.env.LIVE_POLL_INTERVAL_MS || '90000', 10),
+  /** Tik RSS poll intervalas (ms); numatyta 2 min. */
+  youtubeRssPollIntervalMs: parseInt(process.env.YOUTUBE_RSS_POLL_INTERVAL_MS || '120000', 10),
 
   twitchClientId: envTrim('TWITCH_CLIENT_ID'),
   twitchClientSecret: envTrim('TWITCH_CLIENT_SECRET'),
