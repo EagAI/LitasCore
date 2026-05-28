@@ -1,11 +1,8 @@
 /**
- * Embeduose `<@id>` dažnai neberenderinamas ilguose sąrašuose (Discord limitas),
- * net jei narys vis dar serveryje. Visada rodomas `@vardas` kaip paprastas tekstas.
+ * Embede: `<@id>` tik nariams serveryje (paspaudžiami mention'ai).
+ * Ilguose sąrašuose (>~10) Discord neberenderina — todėl userstats puslapiuoja po 5.
+ * Palikus serverį — paprastas `@vardas (paliko)` tekstas.
  */
-function memberDisplayName(member) {
-  return member.displayName || member.user?.globalName || member.user?.username || member.id;
-}
-
 function userDisplayName(user) {
   return user.globalName || user.username || user.id;
 }
@@ -27,13 +24,13 @@ async function resolveUserLabelMap(guild, userIds, client) {
 
   for (const id of unique) {
     const cached = guild.members.cache.get(id);
-    if (cached) map.set(id, `@${memberDisplayName(cached)}`);
+    if (cached) map.set(id, `<@${id}>`);
     else missing.push(id);
   }
 
   await mapInBatches(missing, 8, async id => {
     const member = await guild.members.fetch(id).catch(() => null);
-    if (member) map.set(id, `@${memberDisplayName(member)}`);
+    if (member) map.set(id, `<@${id}>`);
   });
 
   const stillMissing = unique.filter(id => !map.has(id));
