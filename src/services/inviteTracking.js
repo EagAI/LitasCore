@@ -279,8 +279,6 @@ function countValidInvites(userId, guildId) {
 async function buildPakvietimaiEmbed(user, guildId, client) {
   const stats = getInviteStats(user.id, guildId);
   const list = getValidInvitesList(user.id, guildId, 15);
-  const totalListed = list.length;
-  const totalValid = stats.validCount;
   const guild = client.guilds.cache.get(guildId);
 
   const embed = new EmbedBuilder()
@@ -314,20 +312,6 @@ async function buildPakvietimaiEmbed(user, guildId, client) {
       return `${who} · <t:${ts}:f>`;
     });
     embed.addFields({ name: 'Pakviestieji nariai', value: lines.join('\n'), inline: false });
-
-    if (totalValid > totalListed) {
-      embed.setFooter({ text: `Ir dar ${totalValid - totalListed}…` });
-    }
-  }
-
-  const sinceTs = Math.floor(stats.trackingSince / 1000);
-  const footerNote = `Sekama nuo <t:${sinceTs}:D>; senesni pakvietimai neįtraukti.`;
-  if (embed.data.footer) {
-    embed.setFooter({
-      text: `${embed.data.footer.text} · ${footerNote}`,
-    });
-  } else {
-    embed.setFooter({ text: footerNote });
   }
 
   return embed;
