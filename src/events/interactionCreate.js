@@ -48,6 +48,10 @@ module.exports = {
         const { handleScamLogButton } = require('../services/scamLogButtons');
         return handleScamLogButton(interaction);
       }
+      if (id.startsWith('invreset:')) {
+        const { handleInviteHardResetButton } = require('../services/inviteReset');
+        return handleInviteHardResetButton(interaction);
+      }
       if (interaction.customId === 'ticket_open') return handleTicketOpen(interaction);
       if (interaction.customId === 'ticket_close') return handleTicketClose(interaction);
       if (interaction.customId.startsWith('giveaway_enter_')) return handleGiveawayEnter(interaction);

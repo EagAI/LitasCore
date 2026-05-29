@@ -8,6 +8,37 @@ const INVITES_FILE_NAME = 'invites.png';
 
 const TRACKING_SINCE_KEY = 'invite_tracking_since';
 
+function inviteLeaderboardPublicKey(guildId) {
+  return `invite_leaderboard_public_${guildId}`;
+}
+
+/** Ar pakvietimų lyderiai vieši visiems (default: ne). */
+function isInviteLeaderboardPublic(guildId) {
+  const row = db
+    .prepare('SELECT value FROM bot_config WHERE key = ?')
+    .get(inviteLeaderboardPublicKey(guildId));
+  return row?.value === '1';
+}
+
+function setInviteLeaderboardPublic(guildId, enabled) {
+  db.prepare('INSERT OR REPLACE INTO bot_config (key, value) VALUES (?, ?)').run(
+    inviteLeaderboardPublicKey(guildId),
+    enabled ? '1' : '0'
+  );
+}
+
+function getInviteLeaderboardRank(guildId, userId) {
+  const rows = db
+    .prepare(
+      `SELECT user_id FROM invite_stats
+       WHERE guild_id = ? AND valid_count > 0
+       ORDER BY valid_count DESC`
+    )
+    .all(guildId);
+  const idx = rows.findIndex(r => r.user_id === userId);
+  return idx >= 0 ? idx + 1 : null;
+}
+
 function invitesAttachmentFiles() {
   return [new AttachmentBuilder(INVITES_IMAGE_PATH, { name: INVITES_FILE_NAME })];
 }
@@ -315,6 +346,17 @@ function countInvitesByInviter(guildId, inviterId, status = null) {
   );
 }
 
+/** Ištrina visus pakvietimų DB įrašus guild'e ir pradeda sekimą nuo nulio. */
+function hardResetAllInvites(guildId) {
+  const run = db.transaction(() => {
+    db.prepare('DELETE FROM invite_joins WHERE guild_id = ?').run(guildId);
+    db.prepare('DELETE FROM invite_stats WHERE guild_id = ?').run(guildId);
+    db.prepare('DELETE FROM invite_cache WHERE guild_id = ?').run(guildId);
+    db.prepare('DELETE FROM bot_config WHERE key = ?').run(TRACKING_SINCE_KEY);
+  });
+  run();
+}
+
 module.exports = {
   seedInviteCache,
   syncInviteCache,
@@ -326,4 +368,8 @@ module.exports = {
   getInviteRecordForInvitee,
   getInvitesByInviter,
   countInvitesByInviter,
+  isInviteLeaderboardPublic,
+  setInviteLeaderboardPublic,
+  getInviteLeaderboardRank,
+  hardResetAllInvites,
 };

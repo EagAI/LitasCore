@@ -123,7 +123,7 @@ function getModeLabels(mode) {
 async function generateLeaderboardImage(guild, client, options = {}) {
   const mode = options.mode === 'invites' ? 'invites' : 'xp';
   const labels = getModeLabels(mode);
-  const rows = fetchLeaderboardRows(guild.id, mode);
+  const rows = options.forceEmpty ? [] : fetchLeaderboardRows(guild.id, mode);
 
   const W = 940;
   const pad = 40;
@@ -150,13 +150,18 @@ async function generateLeaderboardImage(guild, client, options = {}) {
   ctx.stroke();
 
   if (rows.length === 0) {
+    const emptyTitle = options.hiddenEmpty ? 'Lyderiai kol kas nerodomi' : labels.emptyTitle;
+    const emptySub = options.hiddenEmpty ? null : labels.emptySub;
+
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffffff';
     ctx.font = font('b', 34);
-    ctx.fillText(labels.emptyTitle, W / 2, H / 2 - 14);
-    ctx.font = font('r', 17);
-    ctx.fillStyle = 'rgba(255,255,255,0.52)';
-    ctx.fillText(labels.emptySub, W / 2, H / 2 + 28);
+    ctx.fillText(emptyTitle, W / 2, emptySub ? H / 2 - 14 : H / 2 + 6);
+    if (emptySub) {
+      ctx.font = font('r', 17);
+      ctx.fillStyle = 'rgba(255,255,255,0.52)';
+      ctx.fillText(emptySub, W / 2, H / 2 + 28);
+    }
     return canvas.toBuffer('image/png');
   }
 

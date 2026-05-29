@@ -1,8 +1,12 @@
 const path = require('path');
 const fs = require('fs');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
-const db = require('../db');
-const { countInvitesByInviter, getInviteStats } = require('../services/inviteTracking');
+const {
+  countInvitesByInviter,
+  getInviteStats,
+  isInviteLeaderboardPublic,
+  getInviteLeaderboardRank,
+} = require('../services/inviteTracking');
 
 (() => {
   const root = process.env.SystemRoot || 'C:/Windows';
@@ -46,18 +50,6 @@ const ROW_ALT = 'rgba(255,255,255,0.04)';
 const TOP1 = '#ffd447';
 const TOP2 = '#c8d5e8';
 const TOP3 = '#e8a065';
-
-function getInviteLeaderboardRank(guildId, userId) {
-  const rows = db
-    .prepare(
-      `SELECT user_id FROM invite_stats
-       WHERE guild_id = ? AND valid_count > 0
-       ORDER BY valid_count DESC`
-    )
-    .all(guildId);
-  const idx = rows.findIndex(r => r.user_id === userId);
-  return idx >= 0 ? idx + 1 : null;
-}
 
 function rankValueColor(rank) {
   if (rank === 1) return TOP1;
@@ -165,7 +157,6 @@ async function generatePakvietimaiImage(guild, client, userId) {
   const profile = await resolveUserProfile(guild, client, userId);
   const stats = getInviteStats(userId, guild.id);
   const invalidCount = countInvitesByInviter(guild.id, userId, 'invalid');
-  const rank = getInviteLeaderboardRank(guild.id, userId);
 
   const W = 940;
   const pad = 40;
@@ -207,8 +198,14 @@ async function generatePakvietimaiImage(guild, client, userId) {
 
   y += 16;
 
-  const rankValue = rank != null ? `${rank} vieta` : '—';
-  const rankColor = rank != null ? rankValueColor(rank) : 'rgba(255,255,255,0.45)';
+  const publicLeaderboard = isInviteLeaderboardPublic(guild.id);
+  const rank = publicLeaderboard ? getInviteLeaderboardRank(guild.id, userId) : null;
+  const rankValue = publicLeaderboard ? (rank != null ? `${rank} vieta` : '—') : '*';
+  const rankColor = publicLeaderboard
+    ? rank != null
+      ? rankValueColor(rank)
+      : 'rgba(255,255,255,0.45)'
+    : 'rgba(255,255,255,0.72)';
 
   const statRows = [
     { label: 'Šiuo metu pakvietėte', value: String(stats.validCount), color: ACCENT },
@@ -242,4 +239,4 @@ async function generatePakvietimaiImage(guild, client, userId) {
   return canvas.toBuffer('image/png');
 }
 
-module.exports = { generatePakvietimaiImage, getInviteLeaderboardRank };
+module.exports = { generatePakvietimaiImage };

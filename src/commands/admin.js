@@ -34,6 +34,8 @@ const {
 const { buildInitialUserstatsReply } = require('../services/userStats');
 const { adminUpsertLeaver, adminRemoveLeaver } = require('../services/guildLeavers');
 const { forceTestLiveAnnouncement, adminLiveCheck } = require('../services/liveStreams');
+const { setInviteLeaderboardPublic } = require('../services/inviteTracking');
+const { buildHardResetConfirmReply } = require('../services/inviteReset');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -115,6 +117,22 @@ module.exports = {
         .setDescription('Nario statistika su skiltimis (apžvalga, lygiai, laikas, pakvietimai)')
         .addUserOption(opt =>
           opt.setName('narys').setDescription('Vartotojas').setRequired(true)
+        )
+    )
+    .addSubcommand(sub =>
+      sub
+        .setName('pakvietimai')
+        .setDescription('Pakvietimų lyderių rodymas arba visiškas atstatymas')
+        .addStringOption(opt =>
+          opt
+            .setName('busena')
+            .setDescription('Įjungti, išjungti arba HARDRESET')
+            .setRequired(true)
+            .addChoices(
+              { name: 'Įjungti', value: 'ijungti' },
+              { name: 'Išjungti', value: 'isjungti' },
+              { name: 'HARDRESET', value: 'hardreset' }
+            )
         )
     )
     .addSubcommandGroup(group =>
@@ -330,6 +348,30 @@ module.exports = {
         }
         return interaction.reply(body).catch(() => {});
       }
+    }
+
+    if (!group && sub === 'pakvietimai') {
+      if (!interaction.guild) {
+        return interaction.reply({ content: 'Tik serveryje.', ephemeral: true });
+      }
+
+      const busena = interaction.options.getString('busena', true);
+
+      if (busena === 'hardreset') {
+        return interaction.reply(
+          buildHardResetConfirmReply(interaction.guild.id, interaction.user.id)
+        );
+      }
+
+      const enabled = busena === 'ijungti';
+      setInviteLeaderboardPublic(interaction.guild.id, enabled);
+
+      return interaction.reply({
+        content: enabled
+          ? '✅ Pakvietimų lyderiai **įjungti**. Visi mato lentelę ir savo vietą `/pakvietimai`.'
+          : '✅ Pakvietimų lyderiai **išjungti**. Paprasti nariai nemato lentelės; `/pakvietimai` rodo `*` vietoj vietos (staff vis tiek mato lentelę).',
+        ephemeral: true,
+      });
     }
 
     if (group === 'badge') {

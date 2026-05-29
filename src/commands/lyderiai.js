@@ -1,5 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
 const { generateLeaderboardImage, getModeLabels } = require('../utils/leaderboardImage');
+const { isStaff } = require('../utils/permissions');
+const { isInviteLeaderboardPublic } = require('../services/inviteTracking');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,9 +23,17 @@ module.exports = {
     const tipas = interaction.options.getString('tipas') ?? 'lygis';
     const mode = tipas === 'pakvietimai' ? 'invites' : 'xp';
     const labels = getModeLabels(mode);
+    const hideInvites =
+      mode === 'invites' &&
+      !isInviteLeaderboardPublic(interaction.guild.id) &&
+      !isStaff(interaction.member);
 
     try {
-      const buffer = await generateLeaderboardImage(interaction.guild, interaction.client, { mode });
+      const buffer = await generateLeaderboardImage(interaction.guild, interaction.client, {
+        mode,
+        forceEmpty: hideInvites,
+        hiddenEmpty: hideInvites,
+      });
       const attachment = new AttachmentBuilder(buffer, { name: labels.filename });
       await interaction.editReply({ files: [attachment] });
     } catch (err) {
