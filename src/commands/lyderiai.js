@@ -11,6 +11,7 @@ module.exports = {
       opt
         .setName('tipas')
         .setDescription('Lyderių lentelės tipas')
+        .setRequired(true)
         .addChoices(
           { name: 'Lygis (XP)', value: 'lygis' },
           { name: 'Pakvietimai', value: 'pakvietimai' }
@@ -20,7 +21,7 @@ module.exports = {
   async execute(interaction) {
     await interaction.deferReply();
 
-    const tipas = interaction.options.getString('tipas') ?? 'lygis';
+    const tipas = interaction.options.getString('tipas', true);
     const mode = tipas === 'pakvietimai' ? 'invites' : 'xp';
     const labels = getModeLabels(mode);
     const hideInvites =
