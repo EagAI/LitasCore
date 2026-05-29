@@ -2,8 +2,6 @@ const path = require('path');
 const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const db = require('../db');
 const config = require('../config');
-const { withAllowedMentions } = require('../utils/allowedMentions');
-const { resolveUserLabelMap, userLabel } = require('../utils/userDisplay');
 
 const INVITES_IMAGE_PATH = path.join(__dirname, '../assets/invites.png');
 const INVITES_FILE_NAME = 'invites.png';
@@ -258,63 +256,11 @@ function getInviteStats(userId, guildId) {
   };
 }
 
-function getValidInvitesList(userId, guildId, limit = 15) {
-  return db
-    .prepare(
-      `SELECT invitee_id, joined_at FROM invite_joins
-       WHERE guild_id = ? AND inviter_id = ? AND status = 'valid'
-       ORDER BY joined_at DESC
-       LIMIT ?`
-    )
-    .all(guildId, userId, limit);
-}
-
 function countValidInvites(userId, guildId) {
   const stats = db
     .prepare('SELECT valid_count FROM invite_stats WHERE guild_id = ? AND user_id = ?')
     .get(guildId, userId);
   return stats?.valid_count ?? 0;
-}
-
-async function buildPakvietimaiEmbed(user, guildId, client) {
-  const stats = getInviteStats(user.id, guildId);
-  const list = getValidInvitesList(user.id, guildId, 15);
-  const guild = client.guilds.cache.get(guildId);
-
-  const embed = new EmbedBuilder()
-    .setTitle('Tavo pakvietimai')
-    .setColor(0xe03030)
-    .setDescription(
-      stats.validCount === 0
-        ? 'Dar neturi galiojančių pakvietimų.'
-        : `**Galiojančių pakvietimų:** ${stats.validCount}`
-    );
-
-  if (stats.validCount > 0) {
-    const progress =
-      stats.untilNext === 0
-        ? `Pasiekei **${stats.validCount}** — kitas pasiekimas po **${config.inviteMilestoneStep || 5}** daugiau.`
-        : `Kitas pasiekimas (**${stats.nextMilestone}**): dar **${stats.untilNext}**.`;
-    embed.addFields({ name: 'Progresas', value: progress, inline: false });
-  }
-
-  if (list.length > 0) {
-    const labelMap = guild
-      ? await resolveUserLabelMap(
-          guild,
-          list.map(row => row.invitee_id),
-          client
-        )
-      : new Map();
-    const lines = list.map(row => {
-      const ts = Math.floor(row.joined_at / 1000);
-      const who = guild ? userLabel(labelMap, row.invitee_id) : `\`${row.invitee_id}\``;
-      return `${who} · <t:${ts}:f>`;
-    });
-    embed.addFields({ name: 'Pakviestieji nariai', value: lines.join('\n'), inline: false });
-  }
-
-  return embed;
 }
 
 function getInviteRecordForInvitee(guildId, inviteeId) {
@@ -375,9 +321,7 @@ module.exports = {
   processMemberJoin,
   processMemberLeave,
   getInviteStats,
-  getValidInvitesList,
   countValidInvites,
-  buildPakvietimaiEmbed,
   getTrackingSince,
   getInviteRecordForInvitee,
   getInvitesByInviter,
