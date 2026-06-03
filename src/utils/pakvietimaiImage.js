@@ -7,6 +7,11 @@ const {
   isInviteLeaderboardPublic,
   getInviteLeaderboardRank,
 } = require('../services/inviteTracking');
+const {
+  getLeaderboardName,
+  pickLeaderboardDisplayName,
+  truncateLeaderboardName,
+} = require('./leaderboardName');
 
 (() => {
   const root = process.env.SystemRoot || 'C:/Windows';
@@ -64,7 +69,7 @@ async function resolveUserProfile(guild, client, userId) {
   try {
     const member = await guild.members.fetch(userId).catch(() => null);
     if (member) {
-      display = member.displayName || member.user.username;
+      display = getLeaderboardName(member);
       avatarUrl = member.user.displayAvatarURL({ extension: 'png', size: 128 });
     }
   } catch (_) {
@@ -74,14 +79,14 @@ async function resolveUserProfile(guild, client, userId) {
     try {
       const u = await client.users.fetch(userId).catch(() => null);
       if (u) {
-        display = u.globalName || u.username;
+        display = pickLeaderboardDisplayName(u.globalName || u.username, u.username);
         avatarUrl = u.displayAvatarURL({ extension: 'png', size: 128 });
       }
     } catch (_) {
       /* */
     }
   }
-  if (display.length > 28) display = `${display.slice(0, 26)}…`;
+  display = truncateLeaderboardName(display, 28);
   return { display, avatarUrl };
 }
 

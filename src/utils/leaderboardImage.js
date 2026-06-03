@@ -2,6 +2,11 @@ const path = require('path');
 const fs = require('fs');
 const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const db = require('../db');
+const {
+  getLeaderboardName,
+  pickLeaderboardDisplayName,
+  truncateLeaderboardName,
+} = require('./leaderboardName');
 
 (() => {
   const root = process.env.SystemRoot || 'C:/Windows';
@@ -32,7 +37,7 @@ async function resolveEntry(guild, client, userId) {
   try {
     const member = await guild.members.fetch(userId).catch(() => null);
     if (member) {
-      display = member.displayName || member.user.username;
+      display = getLeaderboardName(member);
       avatarUrl = member.user.displayAvatarURL({ extension: 'png', size: 64 });
     }
   } catch (_) {
@@ -42,14 +47,14 @@ async function resolveEntry(guild, client, userId) {
     try {
       const u = await client.users.fetch(userId).catch(() => null);
       if (u) {
-        display = u.globalName || u.username;
+        display = pickLeaderboardDisplayName(u.globalName || u.username, u.username);
         avatarUrl = u.displayAvatarURL({ extension: 'png', size: 64 });
       }
     } catch (_) {
       /* */
     }
   }
-  if (display.length > 24) display = `${display.slice(0, 22)}…`;
+  display = truncateLeaderboardName(display, 24);
   return { display, avatarUrl };
 }
 
