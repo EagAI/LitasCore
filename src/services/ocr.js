@@ -7,7 +7,64 @@ const { buildScamLogRow } = require('./scamLogButtons');
 const ENABLED = (process.env.SCAM_SCAN_ENABLED ?? 'true') !== 'false';
 const THRESHOLD = parseInt(process.env.SCAM_SCORE_THRESHOLD ?? '4', 10);
 const TIMEOUT_MS = parseInt(process.env.SCAM_TIMEOUT_MS || String(24 * 60 * 60 * 1000), 10);
+/** Vienas admin pranešimas per vartotoją per šį langą (ms). */
+const ALERT_COOLDOWN_MS = parseInt(
+  process.env.SCAM_ALERT_COOLDOWN_MS || String(2 * 60 * 1000),
+  10
+);
 const MAX_LOG_FILES = 10;
+
+/** @type {Map<string, number>} guildId:userId -> paskutinio admin alert laikas */
+const recentScamAlerts = new Map();
+
+function scamAlertKey(guildId, userId) {
+  return `${guildId}:${userId}`;
+}
+
+/** Sinchroniškai — tik pirmas suveikimas per cooldown gauna admin postą. */
+function claimScamAlert(guildId, userId) {
+  const key = scamAlertKey(guildId, userId);
+  const now = Date.now();
+  const last = recentScamAlerts.get(key);
+  if (last != null && now - last < ALERT_COOLDOWN_MS) {
+    return false;
+  }
+  recentScamAlerts.set(key, now);
+  if (recentScamAlerts.size > 2000) {
+    for (const [k, ts] of recentScamAlerts) {
+      if (now - ts >= ALERT_COOLDOWN_MS) recentScamAlerts.delete(k);
+    }
+  }
+  return true;
+}
+
+async function applyScamTimeout(member) {
+  try {
+    await member.timeout(TIMEOUT_MS, 'Automatinis antiscam (OCR) — įtartinas paveikslas');
+  } catch (e) {
+    if (e?.code === 50013) {
+      console.warn(
+        '[antiscam] Nėra teisių „Timeout Members“ (Moderate Members) arba narys aukštesnis už botą.'
+      );
+    } else {
+      console.error('[antiscam] Timeout nepavyko:', e?.message || e);
+    }
+  }
+}
+
+async function deleteScamMessage(message) {
+  try {
+    await message.delete();
+  } catch (e) {
+    if (e?.code === 50013) {
+      console.warn(
+        '[antiscam] Nepavyko ištrinti originalios žinutės — reikia „Manage Messages“ kanale, kur buvo postas.'
+      );
+    } else {
+      console.error('[antiscam] Nepavyko ištrinti žinutės:', e?.message || e);
+    }
+  }
+}
 
 const ALLOWED_CHANNELS = process.env.SCAM_SCAN_CHANNEL_IDS
   ? new Set(process.env.SCAM_SCAN_CHANNEL_IDS.split(',').map(s => s.trim()).filter(Boolean))
@@ -50,24 +107,20 @@ async function handleAntiScam(message) {
 
   if (!anyTriggered) return;
 
-  const reasonList = allReasons.size
-    ? [...allReasons].map(r => `• ${r}`).join('\n')
-    : '• Įtartina';
-
   const member = message.member;
   if (!member) return;
 
-  try {
-    await member.timeout(TIMEOUT_MS, 'Automatinis antiscam (OCR) — įtartinas paveikslas');
-  } catch (e) {
-    if (e?.code === 50013) {
-      console.warn(
-        '[antiscam] Nėra teisių „Timeout Members“ (Moderate Members) arba narys aukštesnis už botą.'
-      );
-    } else {
-      console.error('[antiscam] Timeout nepavyko:', e?.message || e);
-    }
+  const postAlert = claimScamAlert(message.guildId, message.author.id);
+
+  await applyScamTimeout(member);
+  if (!postAlert) {
+    await deleteScamMessage(message);
+    return;
   }
+
+  const reasonList = allReasons.size
+    ? [...allReasons].map(r => `• ${r}`).join('\n')
+    : '• Įtartina';
 
   const targetChannelId = config.adminActionsChannelId || config.logChannelId;
   if (!config.adminActionsChannelId) {
@@ -157,17 +210,7 @@ async function handleAntiScam(message) {
     }
   }
 
-  try {
-    await message.delete();
-  } catch (e) {
-    if (e?.code === 50013) {
-      console.warn(
-        '[antiscam] Nepavyko ištrinti originalios žinutės — reikia „Manage Messages“ kanale, kur buvo postas.'
-      );
-    } else {
-      console.error('[antiscam] Nepavyko ištrinti žinutės:', e?.message || e);
-    }
-  }
+  await deleteScamMessage(message);
 }
 
 module.exports = { handleAntiScam };

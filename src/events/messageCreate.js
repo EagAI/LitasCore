@@ -1,6 +1,7 @@
 const { handleXp } = require('../services/levels');
 const { handleAntiPing } = require('../services/antiPing');
 const { handleAntiScam } = require('../services/ocr');
+const { handleAntiInviteLink } = require('../services/antiInviteLinks');
 const { handleIdeasChannel } = require('../services/ideas');
 const config = require('../config');
 
@@ -19,6 +20,7 @@ module.exports = {
 
     await handleXp(message);
     await handleAntiPing(message);
+    await handleAntiInviteLink(message);
 
     if (message.attachments.size > 0) {
       await handleAntiScam(message);

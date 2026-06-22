@@ -35,9 +35,9 @@ async function handleScamLogButton(interaction) {
     try {
       const member = await interaction.guild.members.fetch(userId).catch(() => null);
       if (member) {
-        await member.ban({ reason: `Sukčiavimo log: ${interaction.user.tag}` });
+        await member.ban({ reason: `Admin log: ${interaction.user.tag}` });
       } else {
-        await interaction.guild.bans.create(userId, { reason: `Sukčiavimo log: ${interaction.user.tag}` });
+        await interaction.guild.bans.create(userId, { reason: `Admin log: ${interaction.user.tag}` });
       }
     } catch (e) {
       return interaction.reply({ content: `Nepavyko užbaninti: ${e?.message || e}`, ephemeral: true });

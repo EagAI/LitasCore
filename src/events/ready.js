@@ -28,6 +28,11 @@ module.exports = {
         `[antiscam] Skenavimas: slenkstis ${process.env.SCAM_SCORE_THRESHOLD ?? '4'}, timeout ${h}h, pranešimai: ${config.adminActionsChannelId || 'log (įjunkite ADMIN_ACTIONS_CHANNEL_ID)'}. Bot: Moderate Members, Manage Messages, admin kanale — siųsti, priedai, embed, komponentai.`
       );
     }
+    if ((process.env.INVITE_LINK_BLOCK_ENABLED ?? 'true') !== 'false') {
+      console.log(
+        `[invlink] Discord invite filtras įjungtas → ${config.adminActionsChannelId || 'log'}.`
+      );
+    }
     await ensureVoiceHub(client);
     for (const guild of client.guilds.cache.values()) {
       await seedInviteCache(guild);

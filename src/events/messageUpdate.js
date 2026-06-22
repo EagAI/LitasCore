@@ -14,7 +14,11 @@ module.exports = {
       if (!newMessage) return;
     }
     if (newMessage.author?.bot) return;
+    if (!newMessage.guild) return;
     if (oldMessage.content === newMessage.content) return;
+
+    const { handleAntiInviteLink } = require('../services/antiInviteLinks');
+    await handleAntiInviteLink(newMessage);
 
     const logChannel = newMessage.guild?.channels.cache.get(config.logChannelId);
     if (!logChannel) return;
