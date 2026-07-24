@@ -121,34 +121,22 @@ async function handleTicketModal(interaction) {
   return interaction.editReply({ content: `Tiketas sukurtas: ${channel}` });
 }
 
-function formatDateTimeLt(ts) {
-  if (ts == null) return '—';
-  return new Date(ts).toLocaleString('lt-LT', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-async function sendTicketClosedDmToOpener(client, { ticket, guild, closedBy }) {
+async function sendTicketClosedDmToOpener(client, { ticket, guild, closedBy, reason }) {
   try {
-    const now = Date.now();
     const user = await client.users.fetch(ticket.opener_user_id);
+    const reasonText = reason?.trim() ? reason.trim() : 'be priežasties';
     const embed = new EmbedBuilder()
       .setTitle('Tiketas uždarytas')
-      .setDescription(
-        `Tavo support tiketas serveryje **${guild.name}** uždarytas. Ačiū, kad kreipėtės.`
-      )
       .setColor(0xed4245)
       .addFields(
-        { name: 'Tiketo ID', value: `\`#${ticket.id}\``, inline: true },
         { name: 'Uždarė', value: closedBy.tag, inline: true },
-        { name: 'Atidaryta', value: formatDateTimeLt(ticket.created_at), inline: true },
-        { name: 'Uždaryta', value: formatDateTimeLt(now), inline: true }
-      );
-    embed.setFooter({ text: guild.name });
+        { name: 'Serveris', value: guild.name, inline: true },
+        { name: 'Priežastis', value: reasonText, inline: false }
+      )
+      .setFooter({
+        text: 'Tiketai nesaugomi. Jeigu buvo klaida — iškelkite per naują.',
+      })
+      .setTimestamp();
     await user.send({ embeds: [embed] });
   } catch (err) {
     console.warn('[ticket] Neišsiųsta DM atidarytojui (DM išjungta arba vartotojas neprieinamas):', err?.message);
@@ -168,6 +156,37 @@ async function handleTicketClose(interaction) {
     return interaction.reply({ content: 'Šis kanalas nėra aktyvus tiketas.', ephemeral: true });
   }
 
+  const modal = new ModalBuilder()
+    .setCustomId('ticket_close_modal')
+    .setTitle('Uždaryti tiketą');
+
+  const reasonInput = new TextInputBuilder()
+    .setCustomId('ticket_close_reason')
+    .setLabel('Priežastis')
+    .setPlaceholder('Kodėl uždarote tiketą? (nebūtina)')
+    .setStyle(TextInputStyle.Paragraph)
+    .setMaxLength(500)
+    .setRequired(false);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
+
+  return interaction.showModal(modal);
+}
+
+async function handleTicketCloseModal(interaction) {
+  if (!isStaff(interaction.member)) {
+    return interaction.reply({ content: 'Tik staff gali uždaryti tiketus.', ephemeral: true });
+  }
+
+  const ticket = db
+    .prepare('SELECT * FROM tickets WHERE channel_id = ? AND status = ?')
+    .get(interaction.channel.id, 'open');
+
+  if (!ticket) {
+    return interaction.reply({ content: 'Šis kanalas nėra aktyvus tiketas.', ephemeral: true });
+  }
+
+  const reason = interaction.fields.getTextInputValue('ticket_close_reason');
   const channel = interaction.channel;
 
   db.prepare('UPDATE tickets SET status = ? WHERE channel_id = ?').run(
@@ -184,6 +203,7 @@ async function handleTicketClose(interaction) {
     ticket,
     guild: interaction.guild,
     closedBy: interaction.user,
+    reason,
   });
 
   try {
@@ -193,4 +213,9 @@ async function handleTicketClose(interaction) {
   }
 }
 
-module.exports = { handleTicketOpen, handleTicketModal, handleTicketClose };
+module.exports = {
+  handleTicketOpen,
+  handleTicketModal,
+  handleTicketClose,
+  handleTicketCloseModal,
+};

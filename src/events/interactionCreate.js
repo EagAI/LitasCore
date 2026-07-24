@@ -1,5 +1,10 @@
 const { PermissionFlagsBits } = require('discord.js');
-const { handleTicketOpen, handleTicketModal, handleTicketClose } = require('../services/tickets');
+const {
+  handleTicketOpen,
+  handleTicketModal,
+  handleTicketClose,
+  handleTicketCloseModal,
+} = require('../services/tickets');
 const { handleGiveawayEnter } = require('../services/giveaway');
 const { handleVoteButton } = require('../services/vote');
 const { handleIdeaVote } = require('../services/ideas');
@@ -27,6 +32,7 @@ module.exports = {
 
     if (interaction.isModalSubmit()) {
       if (interaction.customId === 'ticket_modal') return handleTicketModal(interaction);
+      if (interaction.customId === 'ticket_close_modal') return handleTicketCloseModal(interaction);
     }
 
     if (interaction.isStringSelectMenu()) {
