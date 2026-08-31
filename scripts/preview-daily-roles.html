@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dienos roles — preview</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      background: #1e1f22;
+      color: #dbdee1;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .frame {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #949ba4;
+      margin-bottom: 12px;
+    }
+    .channel-bar {
+      background: #2b2d31;
+      border-radius: 8px 8px 0 0;
+      padding: 12px 16px;
+      border-bottom: 1px solid #1e1f22;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .hash { color: #80848e; font-size: 20px; font-weight: 500; }
+    .channel-name { font-weight: 600; font-size: 15px; }
+    .chat {
+      background: #313338;
+      border-radius: 0 0 8px 8px;
+      padding: 16px 0 24px;
+      min-height: 200px;
+    }
+    .message {
+      display: flex;
+      gap: 16px;
+      padding: 2px 16px;
+      margin-top: 8px;
+    }
+    .message:hover { background: #2e3035; }
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #5865f2, #e03030);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .content { flex: 1; min-width: 0; }
+    .header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .bot-name {
+      font-weight: 600;
+      color: #f2f3f5;
+      font-size: 15px;
+    }
+    .bot-tag {
+      background: #5865f2;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 4px;
+      border-radius: 3px;
+      vertical-align: middle;
+      line-height: 14px;
+    }
+    .timestamp {
+      font-size: 12px;
+      color: #949ba4;
+      font-weight: 400;
+    }
+    .text {
+      font-size: 15px;
+      line-height: 1.375;
+      color: #dbdee1;
+      white-space: pre-wrap;
+    }
+    .mention {
+      background: rgba(88, 101, 242, 0.35);
+      color: #dee0fc;
+      padding: 0 2px;
+      border-radius: 3px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .mention:hover { background: #5865f2; color: #fff; }
+    .note {
+      margin-top: 20px;
+      padding: 12px 14px;
+      background: #2b2d31;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #949ba4;
+      line-height: 1.5;
+    }
+    .note strong { color: #b5bac1; }
+    .note code {
+      background: #1e1f22;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    .reroll {
+      margin-top: 16px;
+      background: #5865f2;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .reroll:hover { background: #4752c4; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="label">Preview — dienos žinutė ~06:30 (Lietuvos laikas)</p>
+
+    <div class="channel-bar">
+      <span class="hash">#</span>
+      <span class="channel-name">kanalas (1496139767350558843)</span>
+    </div>
+
+    <div class="chat">
+      <div class="message">
+        <div class="avatar" aria-hidden="true"></div>
+        <div class="content">
+          <div class="header">
+            <span class="bot-name">LitasCore</span>
+            <span class="bot-tag">BOT</span>
+            <span class="timestamp" id="time">šiandien 06:30</span>
+          </div>
+          <div class="text" id="message"></div>
+        </div>
+      </div>
+    </div>
+
+    <button type="button" class="reroll" id="reroll">Nauji random nariai</button>
+
+    <p class="note">
+      <strong>Kaip veiks bote:</strong> kasdien ~06:30 LT į šį kanalą viena žinutė su 3 skirtingais
+      atsitiktiniais nariais (ne botai). Jei botas buvo išjungtas — papostins paleidus tą pačią dieną.
+      Mention'ai bus tikri <code>&lt;@id&gt;</code> su ping.
+    </p>
+  </div>
+
+  <script>
+    const pool = [
+      "Kukulis Valinskas",
+      "EagWastaken",
+      "Miglė",
+      "Tomas",
+      "Greta",
+      "Mindaugas",
+      "Aistė",
+      "Karolis",
+      "Emilija",
+      "Nojus",
+    ];
+
+    function pickThree() {
+      const copy = [...pool];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy.slice(0, 3);
+    }
+
+    function mention(name) {
+      return `<span class="mention">@${name}</span>`;
+    }
+
+    function render() {
+      const [a, b, c] = pickThree();
+      document.getElementById("message").innerHTML =
+        `- Dienos anegdota skelia: ${mention(a)}\n` +
+        `- Dienos daina pristato: ${mention(b)}\n` +
+        `- Dienos klausima užduoda: ${mention(c)}`;
+    }
+
+    document.getElementById("time").textContent = "šiandien 06:30";
+
+    render();
+    document.getElementById("reroll").addEventListener("click", render);
+  </script>
+</body>
+</html>

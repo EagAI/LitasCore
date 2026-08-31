@@ -1,0 +1,113 @@
+/**
+ * Dienos roles logikos smoke testai (be Discord).
+ * Paleisti: node scripts/test-daily-roles.js
+ */
+const assert = require('assert');
+const {
+  getVilniusDateString,
+  getVilniusParts,
+  shouldAttemptPost,
+  pickThreeMembers,
+  buildDailyRolesMessage,
+  wasPostedToday,
+  markPostedToday,
+  markRestartSkipDay,
+  isRestartSkipDay,
+} = require('../src/services/dailyRoles');
+
+function testDateString() {
+  const s = getVilniusDateString(new Date('2026-08-31T03:30:00.000Z'));
+  assert.match(s, /^\d{4}-\d{2}-\d{2}$/, 'date format');
+  console.log('  ok getVilniusDateString:', s);
+}
+
+function testShouldAttemptPost() {
+  const guildId = 'test-guild-should-attempt';
+
+  // Before 06:30 — no post
+  assert.strictEqual(shouldAttemptPost(guildId, '2099-01-01', 6, 29), false);
+  assert.strictEqual(shouldAttemptPost(guildId, '2099-01-01', 5, 59), false);
+
+  // At 06:30 — yes
+  assert.strictEqual(shouldAttemptPost(guildId, '2099-01-01', 6, 30), true);
+  // Same minute guard — no duplicate
+  assert.strictEqual(shouldAttemptPost(guildId, '2099-01-01', 6, 30), false);
+
+  // After 06:30 — catch-up yes
+  assert.strictEqual(shouldAttemptPost(guildId, '2099-01-02', 10, 0), true);
+
+  console.log('  ok shouldAttemptPost');
+}
+
+function testPickThree() {
+  const members = [
+    { id: '1', user: { bot: false } },
+    { id: '2', user: { bot: false } },
+    { id: '3', user: { bot: false } },
+    { id: '4', user: { bot: true } },
+    { id: '5', user: { bot: false } },
+  ];
+  const picked = pickThreeMembers(members);
+  assert.strictEqual(picked.length, 3);
+  assert.ok(picked.every(m => !m.user.bot));
+  assert.strictEqual(new Set(picked.map(m => m.id)).size, 3);
+
+  const tooFew = pickThreeMembers([
+    { id: '1', user: { bot: false } },
+    { id: '2', user: { bot: true } },
+  ]);
+  assert.strictEqual(tooFew.length, 1);
+
+  console.log('  ok pickThreeMembers');
+}
+
+function testRestartSkipDay() {
+  const guildId = 'test-guild-skip-' + Date.now();
+  const date = '2099-06-15';
+  markRestartSkipDay(guildId, date);
+  assert.strictEqual(isRestartSkipDay(guildId, date), true);
+  assert.strictEqual(shouldAttemptPost(guildId, date, 6, 30), false);
+  assert.strictEqual(shouldAttemptPost(guildId, date, 12, 0), false);
+  assert.strictEqual(shouldAttemptPost(guildId, '2099-06-16', 6, 30), true);
+  console.log('  ok restart skip day');
+}
+
+function testDedup() {
+  const guildId = 'test-guild-dedup-' + Date.now();
+  const date = '2099-12-31';
+  assert.strictEqual(wasPostedToday(guildId, date), false);
+  markPostedToday(guildId, date);
+  assert.strictEqual(wasPostedToday(guildId, date), true);
+  assert.strictEqual(shouldAttemptPost(guildId, date, 12, 0), false);
+  console.log('  ok dedup (wasPostedToday / markPostedToday)');
+}
+
+function testBuildMessage() {
+  const msg = buildDailyRolesMessage([
+    { id: '111' },
+    { id: '222' },
+    { id: '333' },
+  ]);
+  assert.ok(msg.includes('<@111>'));
+  assert.ok(msg.includes('Dienos anegdota skelia'));
+  assert.ok(msg.includes('Dienos daina pristato'));
+  assert.ok(msg.includes('Dienos klausima užduoda'));
+  console.log('  ok buildDailyRolesMessage');
+}
+
+function testVilniusParts() {
+  const p = getVilniusParts(new Date('2026-01-15T04:30:00.000Z'));
+  assert.ok(Number.isFinite(p.hour));
+  assert.ok(Number.isFinite(p.minute));
+  console.log('  ok getVilniusParts:', p);
+}
+
+console.log('[test-daily-roles]');
+testDateString();
+testVilniusParts();
+testShouldAttemptPost();
+testRestartSkipDay();
+testDedup();
+testPickThree();
+testBuildMessage();
+console.log('[test-daily-roles] visi testai praeiti');

@@ -113,6 +113,12 @@ module.exports = {
   /** Tik RSS poll intervalas (ms); numatyta 2 min. */
   youtubeRssPollIntervalMs: parseInt(process.env.YOUTUBE_RSS_POLL_INTERVAL_MS || '120000', 10),
 
+  dailyRolesEnabled: process.env.DAILY_ROLES_ENABLED !== 'false',
+  dailyRolesChannelId: envTrim('DAILY_ROLES_CHANNEL_ID'),
+  dailyRolesHour: parseInt(process.env.DAILY_ROLES_HOUR || '6', 10),
+  dailyRolesMinute: parseInt(process.env.DAILY_ROLES_MINUTE || '30', 10),
+  dailyRolesTimezone: envTrim('DAILY_ROLES_TIMEZONE') || 'Europe/Vilnius',
+
   twitchClientId: envTrim('TWITCH_CLIENT_ID'),
   twitchClientSecret: envTrim('TWITCH_CLIENT_SECRET'),
   twitchChannelLogin: envTrim('TWITCH_CHANNEL_LOGIN'),
