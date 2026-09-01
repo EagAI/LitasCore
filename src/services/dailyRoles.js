@@ -13,10 +13,6 @@ function dailyRolesLastDateKey(guildId) {
   return `daily_roles_last_date_${guildId}`;
 }
 
-function dailyRolesSkipDateKey(guildId) {
-  return `daily_roles_skip_date_${guildId}`;
-}
-
 function getTimezone() {
   return config.dailyRolesTimezone || 'Europe/Vilnius';
 }
@@ -70,21 +66,6 @@ function markPostedToday(guildId, dateString = getVilniusDateString()) {
   );
 }
 
-/** Paleidimo diena — jokio posto (nei catch-up, nei 06:30), pradedama nuo kitos dienos. */
-function markRestartSkipDay(guildId, dateString = getVilniusDateString()) {
-  db.prepare('INSERT OR REPLACE INTO bot_config (key, value) VALUES (?, ?)').run(
-    dailyRolesSkipDateKey(guildId),
-    dateString
-  );
-}
-
-function isRestartSkipDay(guildId, dateString) {
-  const row = db
-    .prepare('SELECT value FROM bot_config WHERE key = ?')
-    .get(dailyRolesSkipDateKey(guildId));
-  return row?.value === dateString;
-}
-
 function isAtScheduledTime(hour, minute) {
   return hour === config.dailyRolesHour && minute === config.dailyRolesMinute;
 }
@@ -95,7 +76,6 @@ function isAfterScheduledTime(hour, minute) {
 }
 
 function shouldAttemptPost(guildId, dateString, hour, minute) {
-  if (isRestartSkipDay(guildId, dateString)) return false;
   if (wasPostedToday(guildId, dateString)) return false;
 
   if (isAtScheduledTime(hour, minute)) {
@@ -247,14 +227,6 @@ function startDailyRolesScheduler(client) {
 
   if (intervalHandle) return;
 
-  if (config.guildId) {
-    const skipDate = getVilniusDateString();
-    markRestartSkipDay(config.guildId, skipDate);
-    console.log(
-      `[dailyRoles] Paleidimo diena (${skipDate}) praleidžiama — pirmas postas nuo kitos dienos ${String(config.dailyRolesHour).padStart(2, '0')}:${String(config.dailyRolesMinute).padStart(2, '0')}.`
-    );
-  }
-
   console.log(
     `[dailyRoles] Scheduler: ${String(config.dailyRolesHour).padStart(2, '0')}:${String(config.dailyRolesMinute).padStart(2, '0')} ${getTimezone()} → kanalas ${config.dailyRolesChannelId || '(nenustatytas)'}`
   );
@@ -280,8 +252,6 @@ module.exports = {
   getVilniusParts,
   wasPostedToday,
   markPostedToday,
-  markRestartSkipDay,
-  isRestartSkipDay,
   shouldAttemptPost,
   pickThreeMembers,
   buildDailyRolesMessage,

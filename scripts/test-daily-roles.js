@@ -11,8 +11,6 @@ const {
   buildDailyRolesMessage,
   wasPostedToday,
   markPostedToday,
-  markRestartSkipDay,
-  isRestartSkipDay,
 } = require('../src/services/dailyRoles');
 
 function testDateString() {
@@ -61,17 +59,6 @@ function testPickThree() {
   console.log('  ok pickThreeMembers');
 }
 
-function testRestartSkipDay() {
-  const guildId = 'test-guild-skip-' + Date.now();
-  const date = '2099-06-15';
-  markRestartSkipDay(guildId, date);
-  assert.strictEqual(isRestartSkipDay(guildId, date), true);
-  assert.strictEqual(shouldAttemptPost(guildId, date, 6, 30), false);
-  assert.strictEqual(shouldAttemptPost(guildId, date, 12, 0), false);
-  assert.strictEqual(shouldAttemptPost(guildId, '2099-06-16', 6, 30), true);
-  console.log('  ok restart skip day');
-}
-
 function testDedup() {
   const guildId = 'test-guild-dedup-' + Date.now();
   const date = '2099-12-31';
@@ -106,7 +93,6 @@ console.log('[test-daily-roles]');
 testDateString();
 testVilniusParts();
 testShouldAttemptPost();
-testRestartSkipDay();
 testDedup();
 testPickThree();
 testBuildMessage();
