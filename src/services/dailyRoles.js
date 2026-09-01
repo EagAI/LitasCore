@@ -106,9 +106,9 @@ function buildDailyRolesMessage(members) {
   const [a, b, c] = members;
   return (
     `Labas Rytas!\n` +
-    `- Dienos anegdota skelia: <@${a.id}>\n` +
-    `- Dienos daina pristato: <@${b.id}>\n` +
-    `- Dienos klausima užduoda: <@${c.id}>`
+    `- Dienos anekdotą skelia: <@${a.id}>\n` +
+    `- Dienos dainą pristato: <@${b.id}>\n` +
+    `- Dienos klausimą užduoda: <@${c.id}>`
   );
 }
 

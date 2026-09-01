@@ -77,9 +77,9 @@ function testBuildMessage() {
   ]);
   assert.ok(msg.includes('<@111>'));
   assert.ok(msg.includes('Labas Rytas!'));
-  assert.ok(msg.includes('Dienos anegdota skelia'));
-  assert.ok(msg.includes('Dienos daina pristato'));
-  assert.ok(msg.includes('Dienos klausima užduoda'));
+  assert.ok(msg.includes('Dienos anekdotą skelia'));
+  assert.ok(msg.includes('Dienos dainą pristato'));
+  assert.ok(msg.includes('Dienos klausimą užduoda'));
   console.log('  ok buildDailyRolesMessage');
 }
 
