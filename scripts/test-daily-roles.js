@@ -11,6 +11,8 @@ const {
   buildDailyRolesMessage,
   wasPostedToday,
   markPostedToday,
+  getLastPinnedMessageId,
+  setLastPinnedMessageId,
 } = require('../src/services/dailyRoles');
 
 function testDateString() {
@@ -59,6 +61,14 @@ function testPickThree() {
   console.log('  ok pickThreeMembers');
 }
 
+function testPinnedMessageId() {
+  const guildId = 'test-guild-pin-' + Date.now();
+  assert.strictEqual(getLastPinnedMessageId(guildId), null);
+  setLastPinnedMessageId(guildId, '1234567890123456789');
+  assert.strictEqual(getLastPinnedMessageId(guildId), '1234567890123456789');
+  console.log('  ok pinned message id storage');
+}
+
 function testDedup() {
   const guildId = 'test-guild-dedup-' + Date.now();
   const date = '2099-12-31';
@@ -94,6 +104,7 @@ console.log('[test-daily-roles]');
 testDateString();
 testVilniusParts();
 testShouldAttemptPost();
+testPinnedMessageId();
 testDedup();
 testPickThree();
 testBuildMessage();

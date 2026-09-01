@@ -13,6 +13,10 @@ function dailyRolesLastDateKey(guildId) {
   return `daily_roles_last_date_${guildId}`;
 }
 
+function dailyRolesLastMessageIdKey(guildId) {
+  return `daily_roles_last_message_id_${guildId}`;
+}
+
 function getTimezone() {
   return config.dailyRolesTimezone || 'Europe/Vilnius';
 }
@@ -64,6 +68,46 @@ function markPostedToday(guildId, dateString = getVilniusDateString()) {
     dailyRolesLastDateKey(guildId),
     dateString
   );
+}
+
+function getLastPinnedMessageId(guildId) {
+  const row = db
+    .prepare('SELECT value FROM bot_config WHERE key = ?')
+    .get(dailyRolesLastMessageIdKey(guildId));
+  return row?.value || null;
+}
+
+function setLastPinnedMessageId(guildId, messageId) {
+  db.prepare('INSERT OR REPLACE INTO bot_config (key, value) VALUES (?, ?)').run(
+    dailyRolesLastMessageIdKey(guildId),
+    messageId
+  );
+}
+
+async function unpinPreviousDailyRolesMessage(channel, guildId) {
+  const prevId = getLastPinnedMessageId(guildId);
+  if (!prevId) return;
+
+  const prevMessage = await channel.messages.fetch(prevId).catch(() => null);
+  if (!prevMessage?.pinned) return;
+
+  try {
+    await prevMessage.unpin();
+    console.log(`[dailyRoles] Atpininta ankstesnė žinutė ${prevId}.`);
+  } catch (err) {
+    console.warn('[dailyRoles] Nepavyko atpininti ankstesnės žinutės:', err?.message || err);
+  }
+}
+
+async function pinDailyRolesMessage(message, guildId) {
+  try {
+    await message.pin();
+    setLastPinnedMessageId(guildId, message.id);
+    console.log(`[dailyRoles] Užpininta žinutė ${message.id}.`);
+  } catch (err) {
+    setLastPinnedMessageId(guildId, message.id);
+    console.warn('[dailyRoles] Nepavyko užpininti žinutės:', err?.message || err);
+  }
 }
 
 function isAtScheduledTime(hour, minute) {
@@ -204,7 +248,9 @@ async function tryPostDailyRoles(client) {
 
   const content = buildDailyRolesMessage(picked);
   try {
-    await channel.send(withAllowedMentions({ content }, { pingUsers: true }));
+    await unpinPreviousDailyRolesMessage(channel, guild.id);
+    const sent = await channel.send(withAllowedMentions({ content }, { pingUsers: true }));
+    await pinDailyRolesMessage(sent, guild.id);
     markPostedToday(guild.id, dateString);
     clearFailure(dateString);
     console.log(`[dailyRoles] Paskelbta ${dateString} ${hour}:${String(minute).padStart(2, '0')} (${getTimezone()}).`);
@@ -253,6 +299,8 @@ module.exports = {
   getVilniusParts,
   wasPostedToday,
   markPostedToday,
+  getLastPinnedMessageId,
+  setLastPinnedMessageId,
   shouldAttemptPost,
   pickThreeMembers,
   buildDailyRolesMessage,
