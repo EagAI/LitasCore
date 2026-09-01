@@ -105,6 +105,7 @@ function pickThreeMembers(members) {
 function buildDailyRolesMessage(members) {
   const [a, b, c] = members;
   return (
+    `Labas Rytas!\n` +
     `- Dienos anegdota skelia: <@${a.id}>\n` +
     `- Dienos daina pristato: <@${b.id}>\n` +
     `- Dienos klausima užduoda: <@${c.id}>`
