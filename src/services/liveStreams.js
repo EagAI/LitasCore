@@ -26,23 +26,8 @@ const YT_FETCH_HEADERS = {
 
 const parser = new XMLParser({ ignoreAttributes: false });
 
-const DEFAULT_TWITCH_URL = 'https://www.twitch.tv/litastv_';
-const DEFAULT_KICK_URL = 'https://kick.com/litastv';
-
 function lastResortImageUrl(videoId) {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-}
-
-function getKickWatchUrl() {
-  if (config.kickUrl) return config.kickUrl;
-  if (config.kickChannelSlug) return `https://kick.com/${config.kickChannelSlug}`;
-  return DEFAULT_KICK_URL;
-}
-
-function getTwitchWatchUrl() {
-  if (config.twitchUrl) return config.twitchUrl;
-  if (config.twitchChannelLogin) return `https://www.twitch.tv/${config.twitchChannelLogin}`;
-  return DEFAULT_TWITCH_URL;
 }
 
 function buildWatchButtons(videoUrl) {
@@ -61,28 +46,6 @@ function buildWatchButtons(videoUrl) {
         .setStyle(ButtonStyle.Link)
         .setURL(config.tiktokUrl)
         .setEmoji('⚫')
-    );
-  }
-
-  const kickUrl = getKickWatchUrl();
-  if (kickUrl) {
-    buttons.push(
-      new ButtonBuilder()
-        .setLabel('Žiūrėti per Kick')
-        .setStyle(ButtonStyle.Link)
-        .setURL(kickUrl)
-        .setEmoji('🟢')
-    );
-  }
-
-  const twitchUrl = getTwitchWatchUrl();
-  if (twitchUrl) {
-    buttons.push(
-      new ButtonBuilder()
-        .setLabel('Žiūrėti per Twitch')
-        .setStyle(ButtonStyle.Link)
-        .setURL(twitchUrl)
-        .setEmoji('🟣')
     );
   }
 
