@@ -28,18 +28,25 @@ function buildAllowedMentions(users, roles, existing, { pingUsers, pingRoles, co
   const contentStr = typeof content === 'string' ? content : '';
 
   if (contentStr.includes('@everyone')) parse.add('everyone');
-  if (pingUsers) parse.add('users');
-  if (pingRoles) parse.add('roles');
 
-  const result = {
-    ...existing,
-    users: [...new Set([...(existing.users ?? []), ...userIds])],
-    roles: [...new Set([...(existing.roles ?? []), ...roleIds])],
-  };
+  const result = { ...existing };
+
+  if (userIds.length > 0) {
+    result.users = [...new Set([...(existing.users ?? []), ...userIds])];
+    // Discord: parse.users ir users[] yra tarpusavyje nesuderinami.
+  } else if (pingUsers) {
+    parse.add('users');
+  }
+
+  if (roleIds.length > 0) {
+    result.roles = [...new Set([...(existing.roles ?? []), ...roleIds])];
+  } else if (pingRoles) {
+    parse.add('roles');
+  }
 
   if (parse.size > 0) {
     result.parse = [...parse];
-  } else if (userIds.length || roleIds.length) {
+  } else if ((userIds.length || roleIds.length) && !pingUsers && !pingRoles) {
     result.parse = [];
   }
 
