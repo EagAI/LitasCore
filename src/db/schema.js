@@ -12,6 +12,7 @@ function runMigrations(db) {
   addColumnIfMissing(db, 'giveaways', 'image_url', 'TEXT');
   addColumnIfMissing(db, 'giveaways', 'required_roles', 'TEXT NOT NULL DEFAULT ""');
   addColumnIfMissing(db, 'guild_leavers', 'reason', 'TEXT');
+  addColumnIfMissing(db, 'tickets', 'description', 'TEXT');
 }
 
 function setupSchema(db) {
@@ -105,7 +106,8 @@ function setupSchema(db) {
       channel_id TEXT UNIQUE NOT NULL,
       opener_user_id TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'open',
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      description TEXT
     );
 
     CREATE TABLE IF NOT EXISTS votes (
