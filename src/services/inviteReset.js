@@ -6,8 +6,41 @@ const {
 } = require('discord.js');
 const { isStaff } = require('../utils/permissions');
 const { hardResetAllInvites, seedInviteCache } = require('./inviteTracking');
+const config = require('../config');
+const { withAllowedMentions } = require('../utils/allowedMentions');
 
 const PREFIX = 'invreset';
+
+async function logInviteReset(guild, actor, kind) {
+  const logId = config.logChannelId;
+  if (!logId || !guild) return;
+
+  const logChannel = guild.channels.cache.get(logId)
+    || await guild.client.channels.fetch(logId).catch(() => null);
+  if (!logChannel?.send) return;
+
+  const isHard = kind === 'hardreset';
+  const embed = new EmbedBuilder()
+    .setColor(isHard ? 0xe03030 : 0xfaa61a)
+    .setTitle(isHard ? 'Pakvietimų HARDRESET' : 'Pakvietimų SOFTRESET')
+    .setDescription(
+      isHard
+        ? 'Ištrinti visi pakvietimų duomenys (joins, stats, sekimas).'
+        : 'Nuresetinta tik pakvietimų **lyderių lentelė** (userstats / milestones nepaliesti).'
+    )
+    .addFields({
+      name: 'Padarė',
+      value: `${actor} (\`${actor.tag}\`)`,
+      inline: false,
+    })
+    .setTimestamp();
+
+  try {
+    await logChannel.send(withAllowedMentions({ embeds: [embed] }));
+  } catch (err) {
+    console.warn('[invreset] Nepavyko išsiųsti į log:', err?.message || err);
+  }
+}
 
 function parseHardResetId(customId) {
   const parts = customId.split(':');
@@ -105,6 +138,8 @@ async function handleInviteHardResetButton(interaction) {
     });
   }
 
+  await logInviteReset(interaction.guild, interaction.user, 'hardreset');
+
   return interaction.update({
     embeds: [buildHardResetResultEmbed(true, actorTag)],
     components: [buildHardResetButtons(guildId, userId, { disabled: true })],
@@ -115,4 +150,5 @@ module.exports = {
   buildHardResetConfirmReply,
   handleInviteHardResetButton,
   parseHardResetId,
+  logInviteReset,
 };

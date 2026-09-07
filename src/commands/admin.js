@@ -35,7 +35,7 @@ const { buildInitialUserstatsReply } = require('../services/userStats');
 const { adminUpsertLeaver, adminRemoveLeaver } = require('../services/guildLeavers');
 const { forceTestLiveAnnouncement, adminLiveCheck } = require('../services/liveStreams');
 const { setInviteLeaderboardPublic, softResetInviteLeaderboard } = require('../services/inviteTracking');
-const { buildHardResetConfirmReply } = require('../services/inviteReset');
+const { buildHardResetConfirmReply, logInviteReset } = require('../services/inviteReset');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -366,6 +366,7 @@ module.exports = {
 
       if (busena === 'softreset') {
         softResetInviteLeaderboard(interaction.guild.id);
+        await logInviteReset(interaction.guild, interaction.user, 'softreset');
         return interaction.reply({
           content:
             '✅ **SOFTRESET** atliktas: pakvietimų **lyderių lentelė** pradėta iš naujo.\n' +
