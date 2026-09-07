@@ -7,6 +7,7 @@ const {
   pickLeaderboardDisplayName,
   truncateLeaderboardName,
 } = require('./leaderboardName');
+const { getInviteLeaderboardRows } = require('../services/inviteTracking');
 
 (() => {
   const root = process.env.SystemRoot || 'C:/Windows';
@@ -80,15 +81,7 @@ const TOP3 = '#e8a065';
 
 function fetchLeaderboardRows(guildId, mode) {
   if (mode === 'invites') {
-    return db
-      .prepare(
-        `SELECT user_id, valid_count AS stat_primary, 0 AS stat_secondary
-         FROM invite_stats
-         WHERE guild_id = ? AND valid_count > 0
-         ORDER BY valid_count DESC
-         LIMIT 15`
-      )
-      .all(guildId);
+    return getInviteLeaderboardRows(guildId, 15);
   }
   return db
     .prepare(

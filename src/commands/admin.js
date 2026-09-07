@@ -34,7 +34,7 @@ const {
 const { buildInitialUserstatsReply } = require('../services/userStats');
 const { adminUpsertLeaver, adminRemoveLeaver } = require('../services/guildLeavers');
 const { forceTestLiveAnnouncement, adminLiveCheck } = require('../services/liveStreams');
-const { setInviteLeaderboardPublic } = require('../services/inviteTracking');
+const { setInviteLeaderboardPublic, softResetInviteLeaderboard } = require('../services/inviteTracking');
 const { buildHardResetConfirmReply } = require('../services/inviteReset');
 
 module.exports = {
@@ -122,15 +122,16 @@ module.exports = {
     .addSubcommand(sub =>
       sub
         .setName('pakvietimai')
-        .setDescription('Pakvietimų lyderių rodymas arba visiškas atstatymas')
+        .setDescription('Pakvietimų lyderių rodymas arba atstatymas')
         .addStringOption(opt =>
           opt
             .setName('busena')
-            .setDescription('Įjungti, išjungti arba HARDRESET')
+            .setDescription('Įjungti, išjungti, softreset (tik lentelė) arba HARDRESET')
             .setRequired(true)
             .addChoices(
               { name: 'Įjungti', value: 'ijungti' },
               { name: 'Išjungti', value: 'isjungti' },
+              { name: 'SOFTRESET', value: 'softreset' },
               { name: 'HARDRESET', value: 'hardreset' }
             )
         )
@@ -361,6 +362,16 @@ module.exports = {
         return interaction.reply(
           buildHardResetConfirmReply(interaction.guild.id, interaction.user.id)
         );
+      }
+
+      if (busena === 'softreset') {
+        softResetInviteLeaderboard(interaction.guild.id);
+        return interaction.reply({
+          content:
+            '✅ **SOFTRESET** atliktas: pakvietimų **lyderių lentelė** pradėta iš naujo.\n' +
+            'Userstats total / milestones / `/pakvietimai` skaičiai **nepaliesti**.',
+          ephemeral: true,
+        });
       }
 
       const enabled = busena === 'ijungti';

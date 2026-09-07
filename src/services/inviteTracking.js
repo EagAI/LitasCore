@@ -12,6 +12,10 @@ function inviteLeaderboardPublicKey(guildId) {
   return `invite_leaderboard_public_${guildId}`;
 }
 
+function inviteLeaderboardSeasonKey(guildId) {
+  return `invite_leaderboard_season_since_${guildId}`;
+}
+
 /** Ar pakvietimų lyderiai vieši visiems (default: ne). */
 function isInviteLeaderboardPublic(guildId) {
   const row = db
@@ -27,14 +31,61 @@ function setInviteLeaderboardPublic(guildId, enabled) {
   );
 }
 
-function getInviteLeaderboardRank(guildId, userId) {
-  const rows = db
+/**
+ * Softreset sezono pradžia (ms). Jei nėra — lyderių lentelė naudoja visus invite_stats.
+ * Po softreset — tik galiojantys joins nuo šios datos.
+ */
+function getInviteLeaderboardSeasonSince(guildId) {
+  const row = db
+    .prepare('SELECT value FROM bot_config WHERE key = ?')
+    .get(inviteLeaderboardSeasonKey(guildId));
+  if (!row?.value) return null;
+  const ts = parseInt(row.value, 10);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function softResetInviteLeaderboard(guildId) {
+  const now = Date.now();
+  db.prepare('INSERT OR REPLACE INTO bot_config (key, value) VALUES (?, ?)').run(
+    inviteLeaderboardSeasonKey(guildId),
+    String(now)
+  );
+  return now;
+}
+
+/** Top eilutės lyderių lentelei (po softreset — tik sezono joins). */
+function getInviteLeaderboardRows(guildId, limit = 15) {
+  const seasonSince = getInviteLeaderboardSeasonSince(guildId);
+  if (seasonSince == null) {
+    return db
+      .prepare(
+        `SELECT user_id, valid_count AS stat_primary, 0 AS stat_secondary
+         FROM invite_stats
+         WHERE guild_id = ? AND valid_count > 0
+         ORDER BY valid_count DESC
+         LIMIT ?`
+      )
+      .all(guildId, limit);
+  }
+
+  return db
     .prepare(
-      `SELECT user_id FROM invite_stats
-       WHERE guild_id = ? AND valid_count > 0
-       ORDER BY valid_count DESC`
+      `SELECT inviter_id AS user_id, COUNT(*) AS stat_primary, 0 AS stat_secondary
+       FROM invite_joins
+       WHERE guild_id = ?
+         AND status = 'valid'
+         AND inviter_id IS NOT NULL
+         AND joined_at >= ?
+       GROUP BY inviter_id
+       HAVING COUNT(*) > 0
+       ORDER BY COUNT(*) DESC
+       LIMIT ?`
     )
-    .all(guildId);
+    .all(guildId, seasonSince, limit);
+}
+
+function getInviteLeaderboardRank(guildId, userId) {
+  const rows = getInviteLeaderboardRows(guildId, 10_000);
   const idx = rows.findIndex(r => r.user_id === userId);
   return idx >= 0 ? idx + 1 : null;
 }
@@ -353,6 +404,7 @@ function hardResetAllInvites(guildId) {
     db.prepare('DELETE FROM invite_stats WHERE guild_id = ?').run(guildId);
     db.prepare('DELETE FROM invite_cache WHERE guild_id = ?').run(guildId);
     db.prepare('DELETE FROM bot_config WHERE key = ?').run(TRACKING_SINCE_KEY);
+    db.prepare('DELETE FROM bot_config WHERE key = ?').run(inviteLeaderboardSeasonKey(guildId));
   });
   run();
 }
@@ -371,5 +423,8 @@ module.exports = {
   isInviteLeaderboardPublic,
   setInviteLeaderboardPublic,
   getInviteLeaderboardRank,
+  getInviteLeaderboardRows,
+  getInviteLeaderboardSeasonSince,
+  softResetInviteLeaderboard,
   hardResetAllInvites,
 };
