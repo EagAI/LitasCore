@@ -218,6 +218,21 @@ function setupSchema(db) {
       last_milestone  INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (guild_id, user_id)
     );
+
+    CREATE TABLE IF NOT EXISTS hitcar_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('ban', 'unban')),
+      execute_at INTEGER NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_hitcar_jobs_pending
+      ON hitcar_jobs (done, execute_at);
   `);
 
   runMigrations(db);

@@ -4,6 +4,7 @@ const { restoreGiveawayTimers } = require('../services/giveaway');
 const { ensureVoiceHub } = require('../services/voiceHub');
 const { seedInviteCache } = require('../services/inviteTracking');
 const { startDailyRolesScheduler } = require('../services/dailyRoles');
+const { restoreHitcarJobs } = require('../services/hitcar');
 const config = require('../config');
 
 function updateStatus(client) {
@@ -41,6 +42,7 @@ module.exports = {
     startLiveStreamPoller(client);
     startDailyRolesScheduler(client);
     restoreGiveawayTimers(client);
+    restoreHitcarJobs(client);
     updateStatus(client);
     setInterval(() => updateStatus(client), 5 * 60 * 1000);
   },
