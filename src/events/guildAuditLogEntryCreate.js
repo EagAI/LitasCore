@@ -1,6 +1,8 @@
 const { EmbedBuilder, AuditLogEvent } = require('discord.js');
 const config = require('../config');
 const { withAllowedMentions } = require('../utils/allowedMentions');
+const { persistAppliedTimeoutFromAudit } = require('../services/timeoutHistory');
+const { persistKickFromAudit } = require('../services/modHistory');
 
 const TRACKED = new Set([
   AuditLogEvent.MemberKick,
@@ -17,12 +19,14 @@ const LABELS = {
 module.exports = {
   name: 'guildAuditLogEntryCreate',
   async execute(entry, guild) {
-    const logChannel = guild.channels.cache.get(config.logChannelId);
-    if (!logChannel) return;
-
     if (entry.action === AuditLogEvent.MemberUpdate) {
       const commChange = entry.changes?.find(c => c.key === 'communication_disabled_until');
       if (!commChange) return;
+
+      persistAppliedTimeoutFromAudit(entry, guild);
+
+      const logChannel = guild.channels.cache.get(config.logChannelId);
+      if (!logChannel) return;
 
       const oldUntil = commChange.old;
       const newUntil = commChange.new;
@@ -94,6 +98,13 @@ module.exports = {
     }
 
     if (!TRACKED.has(entry.action)) return;
+
+    if (entry.action === AuditLogEvent.MemberKick) {
+      persistKickFromAudit(entry, guild);
+    }
+
+    const logChannel = guild.channels.cache.get(config.logChannelId);
+    if (!logChannel) return;
 
     let executor = entry.executor;
     if (!executor && entry.executorId) {

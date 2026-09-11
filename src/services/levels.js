@@ -5,6 +5,7 @@ const config = require('../config');
 const { addBalance } = require('./economy');
 const { withAllowedMentions } = require('../utils/allowedMentions');
 const { getLevelFromXp, getProgressInfo } = require('../utils/xpFormula');
+const { recordXpDaily } = require('./xpDaily');
 const { levelRoles } = config;
 
 const LEVELUP_IMAGE_PATH = path.join(__dirname, '../assets/levelup.png');
@@ -46,6 +47,15 @@ async function addXp(member, amount) {
   db.prepare(
     'UPDATE levels SET xp = ?, level = ? WHERE user_id = ? AND guild_id = ?'
   ).run(newXp, newLevel, member.id, member.guild.id);
+
+  if (amount > 0) {
+    recordXpDaily(
+      member.guild.id,
+      member.id,
+      amount,
+      Math.max(0, newLevel - record.level)
+    );
+  }
 
   if (newLevel > record.level) {
     await assignLevelRoles(member, newLevel);

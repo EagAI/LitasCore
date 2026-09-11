@@ -32,6 +32,7 @@ const {
   syncGuildLevelRoles,
 } = require('../services/levels');
 const { buildInitialUserstatsReply } = require('../services/userStats');
+const { buildServerStatsReply } = require('../services/serverStats');
 const { adminUpsertLeaver, adminRemoveLeaver } = require('../services/guildLeavers');
 const { forceTestLiveAnnouncement, adminLiveCheck } = require('../services/liveStreams');
 const { setInviteLeaderboardPublic, softResetInviteLeaderboard } = require('../services/inviteTracking');
@@ -114,10 +115,15 @@ module.exports = {
     .addSubcommand(sub =>
       sub
         .setName('userstats')
-        .setDescription('Nario statistika su skiltimis (apžvalga, lygiai, laikas, pakvietimai)')
+        .setDescription('Nario statistika: apžvalga, lygiai, laikas, pakvietimai, timeout')
         .addUserOption(opt =>
           opt.setName('narys').setDescription('Vartotojas').setRequired(true)
         )
+    )
+    .addSubcommand(sub =>
+      sub
+        .setName('stats')
+        .setDescription('Serverio statistika: nariai, timeout, banai, XP')
     )
     .addSubcommand(sub =>
       sub
@@ -340,6 +346,25 @@ module.exports = {
         });
       } catch (err) {
         console.error('[admin userstats]', err?.stack || err?.message || err);
+        const body = {
+          content: `Klaida: ${String(err?.message || err).slice(0, 260)}`,
+          ephemeral: true,
+        };
+        if (interaction.deferred || interaction.replied) {
+          return interaction.followUp(body).catch(() => {});
+        }
+        return interaction.reply(body).catch(() => {});
+      }
+    }
+
+    if (!group && sub === 'stats') {
+      if (!interaction.guild) {
+        return interaction.reply({ content: 'Tik serveryje.', ephemeral: true });
+      }
+      try {
+        return await interaction.reply(buildServerStatsReply(interaction.guild));
+      } catch (err) {
+        console.error('[admin stats]', err?.stack || err?.message || err);
         const body = {
           content: `Klaida: ${String(err?.message || err).slice(0, 260)}`,
           ephemeral: true,

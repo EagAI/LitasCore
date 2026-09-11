@@ -181,6 +181,8 @@ function setupSchema(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_guild_member_events_lookup
       ON guild_member_events (guild_id, user_id);
+    CREATE INDEX IF NOT EXISTS idx_guild_member_events_kind_at
+      ON guild_member_events (guild_id, kind, at_ms);
 
     CREATE TABLE IF NOT EXISTS guild_leavers (
       guild_id   TEXT    NOT NULL,
@@ -233,6 +235,44 @@ function setupSchema(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_hitcar_jobs_pending
       ON hitcar_jobs (done, execute_at);
+
+    CREATE TABLE IF NOT EXISTS timeout_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      moderator_id TEXT,
+      reason TEXT,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      until_ms INTEGER,
+      at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_timeout_history_user
+      ON timeout_history (guild_id, user_id, at_ms DESC);
+    CREATE INDEX IF NOT EXISTS idx_timeout_history_guild_at
+      ON timeout_history (guild_id, at_ms);
+
+    CREATE TABLE IF NOT EXISTS mod_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      moderator_id TEXT,
+      kind TEXT NOT NULL CHECK (kind IN ('ban', 'unban', 'kick')),
+      reason TEXT,
+      at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_mod_history_guild_at
+      ON mod_history (guild_id, kind, at_ms);
+
+    CREATE TABLE IF NOT EXISTS xp_daily (
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      day TEXT NOT NULL,
+      xp_gained INTEGER NOT NULL DEFAULT 0,
+      levels_gained INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (guild_id, user_id, day)
+    );
+    CREATE INDEX IF NOT EXISTS idx_xp_daily_guild_day
+      ON xp_daily (guild_id, day);
   `);
 
   runMigrations(db);

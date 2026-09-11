@@ -17,19 +17,28 @@ const {
 } = require('./inviteTracking');
 const { withAllowedMentions } = require('../utils/allowedMentions');
 const { resolveUserLabelMap, userLabel } = require('../utils/userDisplay');
+const { countTimeouts, getTimeouts } = require('./timeoutHistory');
+const { vilniusDateString, shiftDay, userPeriodTotals } = require('./xpDaily');
 
 const PREFIX = 'usrst';
 /** description max ~ Discord 4096; paliekam vietos footer puslapiui */
 const DESC_CHAR_BUDGET = 3800;
 /** Pakvietimų sąraše viename puslapyje */
 const INVITES_PER_PAGE = 5;
+/** Timeout istorijoje viename puslapyje */
+const TIMEOUTS_PER_PAGE = 6;
 
 const USERSTATS_VIEWS = {
   overview: { label: 'Apžvalga', description: 'Paskyra, rolės, santrauka' },
   levels: { label: 'Lygiai', description: 'XP, lygis, litai, ženkleliai' },
   time: { label: 'Laikas serveryje', description: 'Sesijos ir kronika' },
   invites: { label: 'Pakvietimai', description: 'Ką pakvietė ir kas pakvietė' },
+  timeouts: { label: 'Timeout', description: 'Kada gavo timeout ir kas davė' },
 };
+
+function isPagedView(view) {
+  return view === 'invites' || view === 'timeouts';
+}
 
 function logGuildMemberEvent(guildId, userId, kind) {
   try {
@@ -126,6 +135,7 @@ async function collectUserstatsLines(user, guild, memberMaybe, view = 'overview'
       .get(user.id, guildId)?.c ?? 0;
 
   const inviteStats = getInviteStats(user.id, guildId);
+  const timeoutCount = countTimeouts(guildId, user.id);
   const xpStr = levelRow ? Number(levelRow.xp).toLocaleString('lt-LT') : '';
 
   const lines = [];
@@ -164,6 +174,7 @@ async function collectUserstatsLines(user, guild, memberMaybe, view = 'overview'
               `Lygis           ${levelRow?.level ?? 0}`,
               `XP              ${xpStr || '0'}`,
               `Pakvietimai     ${inviteStats.validCount} (galiojantys)`,
+              `Timeout         ${timeoutCount}`,
               `Laikas serveryje ${fmtDurMs(totalMs)}`,
               `Litų            ${bal.toLocaleString('lt-LT')}`,
             ].join('\n'),
@@ -203,6 +214,22 @@ async function collectUserstatsLines(user, guild, memberMaybe, view = 'overview'
           ].join('\n')
         );
       }
+
+      const today = vilniusDateString();
+      const week = userPeriodTotals(guildId, user.id, shiftDay(today, -6), today);
+      const month = userPeriodTotals(guildId, user.id, shiftDay(today, -29), today);
+      lines.push('');
+      lines.push('**XP tempas** _(Vilniaus diena, nuo sekimo pradžios)_');
+      lines.push(
+        [
+          '```',
+          [
+            `7 d.   ${week.xp.toLocaleString('lt-LT')} XP · ${week.levels} lyg. · ${week.days_active} d.`,
+            `30 d.  ${month.xp.toLocaleString('lt-LT')} XP · ${month.levels} lyg. · ${month.days_active} d.`,
+          ].join('\n'),
+          '```',
+        ].join('\n')
+      );
     }
 
     if (viewKey === 'time') {
@@ -406,6 +433,77 @@ async function collectInvitesPageLines(user, guild, pageZeroBased) {
   };
 }
 
+async function collectTimeoutsPageLines(user, guild, pageZeroBased) {
+  const guildId = guild.id;
+  const total = countTimeouts(guildId, user.id);
+  const pageCount = Math.max(1, Math.ceil(total / TIMEOUTS_PER_PAGE) || 1);
+  const page = Math.max(0, Math.min(pageZeroBased, pageCount - 1));
+  const rows = total
+    ? getTimeouts(guildId, user.id, {
+        limit: TIMEOUTS_PER_PAGE,
+        offset: page * TIMEOUTS_PER_PAGE,
+      })
+    : [];
+
+  const labelIds = rows.map(r => r.moderator_id).filter(Boolean);
+  const labels = await resolveUserLabelMap(guild, labelIds, guild.client);
+
+  const lines = [];
+  if (page === 0) {
+    lines.push('**Timeout istorija**');
+    lines.push(`Iš viso: **${total}**`);
+    lines.push('_Sekama nuo dabar (audit log). Senesni timeoutai neįtraukti._');
+  } else {
+    lines.push(`**Timeout istorija** · _puslapis ${page + 1}/${pageCount}_`);
+  }
+
+  if (!rows.length) {
+    if (page === 0) {
+      lines.push('');
+      lines.push('_Timeout įrašų nėra._');
+    }
+  } else {
+    lines.push('');
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const n = page * TIMEOUTS_PER_PAGE + i + 1;
+      const who = row.moderator_id
+        ? userLabel(labels, row.moderator_id)
+        : '_Nežinoma / sistema_';
+      const reason =
+        typeof row.reason === 'string' && row.reason.trim()
+          ? row.reason.trim().replace(/\s+/g, ' ').slice(0, 140)
+          : null;
+      const until =
+        row.until_ms != null && Number.isFinite(Number(row.until_ms))
+          ? `iki <t:${Math.floor(Number(row.until_ms) / 1000)}:t>`
+          : null;
+
+      lines.push(
+        [
+          `**${n}.** ${when(row.at_ms)} · **${fmtDurMs(Number(row.duration_ms) || 0)}**`,
+          until ? `     ${until}` : '',
+          `     Moderatorius: ${who}`,
+          reason ? `     Priežastis: ${reason}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      );
+      lines.push('');
+    }
+  }
+
+  return {
+    lines,
+    titleBase: user.globalName || user.username,
+    guildName: guild.name,
+    view: 'timeouts',
+    viewLabel: USERSTATS_VIEWS.timeouts.label,
+    pageCount,
+    page,
+  };
+}
+
 /**
  * Sukelia tekstą į puslapius (neviršyjant Discord aprašymo ribos).
  */
@@ -443,18 +541,21 @@ function splitLinesIntoPageDescriptions(lines) {
 async function buildPagedEmbeds(user, guild, memberMaybe, avatarUrl, view = 'overview', pageZeroBased = 0) {
   const safeView = USERSTATS_VIEWS[view] ? view : 'overview';
 
-  if (safeView === 'invites') {
+  if (isPagedView(safeView)) {
     let collected;
     try {
-      collected = await collectInvitesPageLines(user, guild, pageZeroBased);
+      collected =
+        safeView === 'timeouts'
+          ? await collectTimeoutsPageLines(user, guild, pageZeroBased)
+          : await collectInvitesPageLines(user, guild, pageZeroBased);
     } catch (err) {
-      console.error('[userStats] collectInvitesPageLines:', err?.stack || err?.message || err);
+      console.error('[userStats] paged view:', err?.stack || err?.message || err);
       collected = {
-        lines: [`Klaida kraunant pakvietimus: \`${String(err?.message || err).slice(0, 180)}\``],
+        lines: [`Klaida kraunant skiltį: \`${String(err?.message || err).slice(0, 180)}\``],
         titleBase: user.globalName || user.username || 'Vartotojas',
         guildName: guild.name || 'Serveris',
-        view: 'invites',
-        viewLabel: USERSTATS_VIEWS.invites.label,
+        view: safeView,
+        viewLabel: USERSTATS_VIEWS[safeView]?.label || safeView,
         pageCount: 1,
         page: 0,
       };
@@ -471,7 +572,7 @@ async function buildPagedEmbeds(user, guild, memberMaybe, avatarUrl, view = 'ove
       })
       .setThumbnail(avatarUrl || user.displayAvatarURL({ size: 128 }));
 
-    return { embeds: [embed], pageCount: collected.pageCount, view: 'invites' };
+    return { embeds: [embed], pageCount: collected.pageCount, view: collected.view };
   }
 
   let collected;
@@ -582,7 +683,7 @@ async function buildInitialUserstatsReply(user, guild, memberMaybe, view = 'over
   }
 
   const p = Math.max(0, Math.min(pageZeroBased, pageCount - 1));
-  const displayEmbed = safeView === 'invites' ? embeds[0] : embeds[p];
+  const displayEmbed = isPagedView(safeView) ? embeds[0] : embeds[p];
 
   return withAllowedMentions({
     embeds: [displayEmbed],
@@ -632,7 +733,7 @@ async function updateUserstatsMessage(interaction, targetUserId, view, pageRaw) 
   const safePage = Math.max(0, Math.min(p, pageCount - 1));
   await interaction.update(
     withAllowedMentions({
-      embeds: [allEmbeds[safeView === 'invites' ? 0 : safePage]],
+      embeds: [allEmbeds[isPagedView(safeView) ? 0 : safePage]],
       components: [
         viewSelectRow(interaction.guildId, targetUserId, safeView),
         pagingRowButtons(interaction.guildId, targetUserId, safeView, safePage, pageCount),
