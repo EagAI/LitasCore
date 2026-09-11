@@ -5,6 +5,9 @@ const {
   buildHitReplyPayload,
   scheduleHitcarBan,
 } = require('../services/hitcar');
+const { removeXp } = require('../services/levels');
+
+const HITCAR_XP_PENALTY = 5000;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -75,6 +78,8 @@ module.exports = {
         timedOut = true;
       }
 
+      const xpOut = await removeXp(targetMember, HITCAR_XP_PENALTY);
+
       scheduleHitcarBan(interaction.client, {
         guildId: interaction.guild.id,
         channelId: interaction.channel.id,
@@ -92,6 +97,7 @@ module.exports = {
         content:
           `${targetMessage.author} nutrenktas — ${timeoutNote}. ` +
           `Po 5 min. gaus **1 savaitės** baną.\n` +
+          `Atimta **${HITCAR_XP_PENALTY.toLocaleString('lt-LT')} XP** → lygis **${xpOut.newLevel}**, XP **${xpOut.newXp.toLocaleString('lt-LT')}**.\n` +
           `Priežastis: \`${reason}\`\n${targetMessage.url}`,
       });
     } catch (err) {

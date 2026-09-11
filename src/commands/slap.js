@@ -1,8 +1,10 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { isStaff } = require('../utils/permissions');
+const { removeXp } = require('../services/levels');
 
 const SLAP_GIF_URL = 'https://klipy.com/gifs/slap-13622';
 const SLAP_TIMEOUT_MS = 5 * 60 * 1000;
+const SLAP_XP_PENALTY = 1000;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -60,11 +62,17 @@ module.exports = {
         timedOut = true;
       }
 
+      const xpOut = await removeXp(targetMember, SLAP_XP_PENALTY);
+
       const result = timedOut
         ? `${targetMessage.author} gavo slap ir **5 min** timeout už žinutę ${targetMessage.url}`
         : `${targetMessage.author} gavo slap (timeout nepritaikytas — rolė per aukšta) už žinutę ${targetMessage.url}`;
 
-      await interaction.editReply({ content: result });
+      await interaction.editReply({
+        content:
+          `${result}\n` +
+          `Atimta **${SLAP_XP_PENALTY.toLocaleString('lt-LT')} XP** → lygis **${xpOut.newLevel}**, XP **${xpOut.newXp.toLocaleString('lt-LT')}**.`,
+      });
     } catch (err) {
       await interaction.editReply({
         content: `Nepavyko: ${err?.message || err}`,

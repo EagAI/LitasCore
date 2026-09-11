@@ -52,8 +52,20 @@ module.exports = {
       status: 'online',
     });
 
-    void restoreMemberRolesBackup(member).catch(e =>
-      console.error('[roles-backup] restore:', e?.message || e)
-    );
+    void restoreMemberRolesBackup(member)
+      .catch(e => console.error('[roles-backup] restore:', e?.message || e))
+      .then(async () => {
+        try {
+          const { assignLevelRoles, getLevelFromXp } = require('../services/levels');
+          const db = require('../db');
+          const rec = db
+            .prepare('SELECT xp FROM levels WHERE user_id = ? AND guild_id = ?')
+            .get(member.id, member.guild.id);
+          const fresh = await member.guild.members.fetch(member.id).catch(() => member);
+          await assignLevelRoles(fresh, getLevelFromXp(rec?.xp ?? 0));
+        } catch (e) {
+          console.warn('[levels] rolių atkūrimas po grįžimo:', e?.message || e);
+        }
+      });
   },
 };

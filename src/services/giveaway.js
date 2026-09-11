@@ -259,6 +259,13 @@ async function handleGiveawayEnter(interaction) {
     });
   }
 
+  if (config.negativeLevelRoleId && interaction.member?.roles?.cache.has(config.negativeLevelRoleId)) {
+    return interaction.reply({
+      content: 'Jums neleidžiama dalyvauti šiame giveaway (neigiamas lygis).',
+      ephemeral: true,
+    });
+  }
+
   const requiredRoles = JSON.parse(giveaway.required_roles || '[]');
   if (requiredRoles.length > 0) {
     const memberRoles = interaction.member.roles.cache;

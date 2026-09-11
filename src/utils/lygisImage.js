@@ -5,24 +5,18 @@ const db = require('../db');
 GlobalFonts.registerFromPath('C:/Windows/Fonts/segoeuib.ttf', 'SegoeB');
 GlobalFonts.registerFromPath('C:/Windows/Fonts/segoeui.ttf', 'Segoe');
 
+const { getLevelFromXp, xpRequiredForLevel } = require('../utils/xpFormula');
+
 const BG_PATH = path.join(__dirname, '../assets/lygis.png');
 
-const BASE_XP = 100, MULT = 1.3;
-
-function xpFor(level) {
-  let t = 0;
-  for (let i = 1; i <= level; i++) t += Math.floor(BASE_XP * Math.pow(MULT, i - 1));
-  return t;
-}
-
 function getProgressInfo(xp) {
-  let level = 0;
-  while (xpFor(level + 1) <= xp) level++;
-  const floor = xpFor(level);
-  const ceil  = xpFor(level + 1);
+  const level = getLevelFromXp(xp);
+  const floor = xpRequiredForLevel(level);
+  const ceil = xpRequiredForLevel(level + 1);
   const current = xp - floor;
-  const needed  = ceil - floor;
-  return { level, current, needed, pct: needed > 0 ? current / needed : 0 };
+  const needed = ceil - floor;
+  const raw = needed > 0 ? current / needed : 0;
+  return { level, current, needed, pct: Math.max(0, Math.min(1, raw)) };
 }
 
 function drawRoundRect(ctx, x, y, w, h, r) {

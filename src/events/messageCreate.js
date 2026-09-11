@@ -3,6 +3,7 @@ const { handleAntiPing } = require('../services/antiPing');
 const { handleAntiScam } = require('../services/ocr');
 const { handleAntiInviteLink } = require('../services/antiInviteLinks');
 const { handleIdeasChannel } = require('../services/ideas');
+const { handleNegativeLevelMedia } = require('../services/negativeLevelMedia');
 const config = require('../config');
 
 module.exports = {
@@ -17,6 +18,8 @@ module.exports = {
     ) {
       return handleIdeasChannel(message);
     }
+
+    if (await handleNegativeLevelMedia(message)) return;
 
     await handleXp(message);
     await handleAntiPing(message);

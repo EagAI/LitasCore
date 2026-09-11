@@ -4,6 +4,7 @@ const db = require('../db');
 const config = require('../config');
 const { addBalance } = require('./economy');
 const { withAllowedMentions } = require('../utils/allowedMentions');
+const { getLevelFromXp, getProgressInfo } = require('../utils/xpFormula');
 const { levelRoles } = config;
 
 const LEVELUP_IMAGE_PATH = path.join(__dirname, '../assets/levelup.png');
@@ -20,37 +21,6 @@ function embedSetLevelUpThumbnail(embed) {
 function getLevelUpChannel(guild) {
   const id = config.pasekimuChannelId || config.levelUpChannelId;
   return id ? guild.channels.cache.get(id) : null;
-}
-
-const BASE_XP = 100;
-const MULTIPLIER = 1.3;
-
-function xpRequiredForLevel(level) {
-  let total = 0;
-  for (let i = 1; i <= level; i++) {
-    total += Math.floor(BASE_XP * Math.pow(MULTIPLIER, i - 1));
-  }
-  return total;
-}
-
-function getLevelFromXp(xp) {
-  let level = 0;
-  while (xpRequiredForLevel(level + 1) <= xp) {
-    level++;
-  }
-  return level;
-}
-
-function getProgressInfo(xp) {
-  const level = getLevelFromXp(xp);
-  const currentFloor = xpRequiredForLevel(level);
-  const nextCeiling = xpRequiredForLevel(level + 1);
-  return {
-    level,
-    current: xp - currentFloor,
-    needed: nextCeiling - currentFloor,
-    percent: Math.floor(((xp - currentFloor) / (nextCeiling - currentFloor)) * 100),
-  };
 }
 
 function ensureRecord(userId, guildId) {
@@ -79,19 +49,25 @@ async function addXp(member, amount) {
 
   if (newLevel > record.level) {
     await assignLevelRoles(member, newLevel);
-    const levelsGained = newLevel - record.level;
-    setImmediate(() => {
-      try {
-        for (let i = 0; i < levelsGained; i++) {
-          const amt = 10 + Math.floor(Math.random() * 6);
-          addBalance(member.id, member.guild.id, amt);
+    if (newLevel > 0) {
+      const from = Math.max(record.level, 0);
+      const levelsGained = newLevel - from;
+      setImmediate(() => {
+        try {
+          for (let i = 0; i < levelsGained; i++) {
+            const amt = 10 + Math.floor(Math.random() * 6);
+            addBalance(member.id, member.guild.id, amt);
+          }
+        } catch (_) {
+          /* tyliai */
         }
-      } catch (_) {
-        /* tyliai */
-      }
-    });
-    const isMilestone = await postMilestoneLevelUp(member, newLevel);
+      });
+    }
+    const isMilestone = newLevel > 0 ? await postMilestoneLevelUp(member, newLevel) : false;
     return { leveledUp: true, newLevel, newXp, isMilestone };
+  }
+  if (newLevel < record.level) {
+    await assignLevelRoles(member, newLevel);
   }
   return { leveledUp: false, newLevel, newXp };
 }
@@ -147,7 +123,7 @@ async function afterXpGainAnnouncements(member, result) {
 
 async function removeXp(member, amount) {
   const record = ensureRecord(member.id, member.guild.id);
-  const newXp = Math.max(0, record.xp - amount);
+  const newXp = record.xp - amount;
   const newLevel = getLevelFromXp(newXp);
 
   db.prepare(
@@ -244,21 +220,32 @@ async function assignLevelRoles(member, level) {
         await member.roles.remove(roleId).catch(fail);
       }
     }
-    return { failures };
-  }
+  } else {
+    const allRoleIds = levelRoles.map(r => r.roleId).filter(Boolean);
+    const reward = getRewardRole(level);
 
-  const allRoleIds = levelRoles.map(r => r.roleId).filter(Boolean);
-  const reward = getRewardRole(level);
-
-  for (const roleId of allRoleIds) {
-    if (reward && roleId === reward.roleId) {
-      if (!member.roles.cache.has(roleId)) {
-        await member.roles.add(roleId).catch(fail);
+    for (const roleId of allRoleIds) {
+      if (reward && roleId === reward.roleId) {
+        if (!member.roles.cache.has(roleId)) {
+          await member.roles.add(roleId).catch(fail);
+        }
+      } else if (member.roles.cache.has(roleId)) {
+        await member.roles.remove(roleId).catch(fail);
       }
-    } else if (member.roles.cache.has(roleId)) {
-      await member.roles.remove(roleId).catch(fail);
     }
   }
+
+  const penaltyId = config.negativeLevelRoleId;
+  if (penaltyId) {
+    if (level < 0) {
+      if (!member.roles.cache.has(penaltyId)) {
+        await member.roles.add(penaltyId).catch(fail);
+      }
+    } else if (member.roles.cache.has(penaltyId)) {
+      await member.roles.remove(penaltyId).catch(fail);
+    }
+  }
+
   return { failures };
 }
 
@@ -324,8 +311,9 @@ async function buildRankEmbed(member) {
 }
 
 function buildProgressBar(percent) {
-  const filled = Math.round(percent / 10);
-  return '█'.repeat(filled) + '░'.repeat(10 - filled) + ` ${percent}%`;
+  const p = Math.max(0, Math.min(100, Number(percent) || 0));
+  const filled = Math.round(p / 10);
+  return '█'.repeat(filled) + '░'.repeat(10 - filled) + ` ${p}%`;
 }
 
 /** Bandomasis lygio embed (staff /test levelup) — be DB pakeitimų. */
@@ -353,4 +341,5 @@ module.exports = {
   afterXpGainAnnouncements,
   getTestLevelUpPayload,
   syncGuildLevelRoles,
+  getLevelFromXp,
 };

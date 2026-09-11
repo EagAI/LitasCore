@@ -127,8 +127,19 @@ async function restoreMemberRolesBackup(member) {
     del();
   } finally {
     const fresh = await guild.members.fetch(member.id).catch(() => null);
-    seedRoleSnapshot(fresh ?? member);
+    const target = fresh ?? member;
+    seedRoleSnapshot(target);
     markRoleBackupRestoreFinished(member.guild.id, member.id);
+    try {
+      const { assignLevelRoles, getLevelFromXp } = require('./levels');
+      const rec = db
+        .prepare('SELECT xp FROM levels WHERE user_id = ? AND guild_id = ?')
+        .get(member.id, member.guild.id);
+      const level = getLevelFromXp(rec?.xp ?? 0);
+      await assignLevelRoles(target, level);
+    } catch (e) {
+      console.warn('[roles-backup] lygio rolių atkūrimas:', e?.message || e);
+    }
   }
 }
 

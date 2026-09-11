@@ -98,6 +98,9 @@ module.exports = {
    */
   blacklistRoleId: envTrim('BLACKLIST_ROLE_ID'),
 
+  /** Minusinio lygio rolė (giveaway blokas ir kt.). */
+  negativeLevelRoleId: envTrim('NEGATIVE_LEVEL_ROLE_ID') || '1547973339514146946',
+
   staffRoleIds: parseCsvIds('STAFF_ROLE_IDS'),
   modRoleIds: parseCsvIds('MOD_ROLE_IDS'),
   welcomeRoleIds: buildWelcomeRoleIds(),
@@ -118,6 +121,8 @@ module.exports = {
   dailyRolesHour: parseInt(process.env.DAILY_ROLES_HOUR || '6', 10),
   dailyRolesMinute: parseInt(process.env.DAILY_ROLES_MINUTE || '30', 10),
   dailyRolesTimezone: envTrim('DAILY_ROLES_TIMEZONE') || 'Europe/Vilnius',
+  /** Bendras pokalbių kanalas (minusinio lygio media filtras). */
+  bendrasChannelId: envTrim('BENDRAS_CHANNEL_ID') || envTrim('DAILY_ROLES_CHANNEL_ID'),
 
   inviteMinAccountAgeDays: parseInt(process.env.INVITE_MIN_ACCOUNT_AGE_DAYS || '7', 10),
   inviteQuickLeaveHours: parseInt(process.env.INVITE_QUICK_LEAVE_HOURS || '24', 10),
