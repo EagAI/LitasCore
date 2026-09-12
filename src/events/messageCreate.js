@@ -4,6 +4,7 @@ const { handleAntiScam } = require('../services/ocr');
 const { handleAntiInviteLink } = require('../services/antiInviteLinks');
 const { handleIdeasChannel } = require('../services/ideas');
 const { handleNegativeLevelMedia } = require('../services/negativeLevelMedia');
+const { handleJailMessage } = require('../services/jail');
 const config = require('../config');
 
 module.exports = {
@@ -11,6 +12,8 @@ module.exports = {
   async execute(message) {
     if (message.author.bot) return;
     if (!message.guild) return;
+
+    if (await handleJailMessage(message)) return;
 
     if (
       config.ideasChannelIds.length > 0 &&

@@ -87,6 +87,7 @@ module.exports = {
   youtubeAnnounceChannelId: envTrim('YOUTUBE_ANNOUNCE_CHANNEL_ID'),
   voiceCategoryId: envTrim('VOICE_CATEGORY_ID'),
   ticketsCategoryId: envTrim('TICKETS_CATEGORY_ID'),
+  jailCategoryId: envTrim('JAIL_CATEGORY_ID') || '1548398697577185421',
 
   adminActionsChannelId:
     envTrim('ADMIN_ACTIONS_CHANNEL_ID'),

@@ -6,12 +6,14 @@ const { seedRoleSnapshot } = require('../services/memberRoleSnapshot');
 const { logGuildMemberEvent } = require('../services/userStats');
 const { processMemberJoin } = require('../services/inviteTracking');
 const { withAllowedMentions } = require('../utils/allowedMentions');
+const { handleJailMemberRejoin } = require('../services/jail');
 
 module.exports = {
   name: 'guildMemberAdd',
   async execute(member) {
     await processMemberJoin(member);
     logGuildMemberEvent(member.guild.id, member.id, 'join');
+    await handleJailMemberRejoin(member).catch(() => {});
     for (const roleId of config.welcomeRoleIds) {
       try {
         await member.roles.add(roleId);

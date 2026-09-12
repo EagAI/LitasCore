@@ -273,6 +273,23 @@ function setupSchema(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_xp_daily_guild_day
       ON xp_daily (guild_id, day);
+
+    CREATE TABLE IF NOT EXISTS jail_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      jailed_by TEXT NOT NULL,
+      current_question_index INTEGER NOT NULL DEFAULT 0,
+      questions_data TEXT NOT NULL,
+      hidden_channel_ids TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+    );
+    CREATE INDEX IF NOT EXISTS idx_jail_sessions_user
+      ON jail_sessions (guild_id, user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_jail_sessions_channel
+      ON jail_sessions (channel_id, status);
   `);
 
   runMigrations(db);
