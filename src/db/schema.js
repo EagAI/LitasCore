@@ -13,6 +13,7 @@ function runMigrations(db) {
   addColumnIfMissing(db, 'giveaways', 'required_roles', 'TEXT NOT NULL DEFAULT ""');
   addColumnIfMissing(db, 'guild_leavers', 'reason', 'TEXT');
   addColumnIfMissing(db, 'tickets', 'description', 'TEXT');
+  addColumnIfMissing(db, 'jail_sessions', 'question_message_id', 'TEXT');
 }
 
 function setupSchema(db) {
@@ -283,6 +284,7 @@ function setupSchema(db) {
       current_question_index INTEGER NOT NULL DEFAULT 0,
       questions_data TEXT NOT NULL,
       hidden_channel_ids TEXT NOT NULL DEFAULT '[]',
+      question_message_id TEXT,
       created_at INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'active'
     );

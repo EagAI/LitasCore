@@ -13,6 +13,7 @@ const { pickRandomQuestions, isAnswerCorrect } = require('./jailQuestions');
 const SLAP_GIF_URL = 'https://klipy.com/gifs/slap-13622';
 const SLAP_TIMEOUT_MS = 5 * 60 * 1000;
 const SLAP_XP_PENALTY = 1000;
+const AUTO_DELETE_MS = 5000;
 
 function isTagAttempt(message) {
   if (message.mentions.everyone) return true;
@@ -24,6 +25,134 @@ function isTagAttempt(message) {
   if (/@\S+/i.test(content)) return true;
   if (/<@!?\d+>|<@&\d+>/i.test(content)) return true;
   return false;
+}
+
+const jailUserMessageHistory = new Map();
+
+function isRandomGibberish(text) {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  // 1. 5+ pasikartojančių tų pačių simbolių iš eilės (pvz. aaaaa, ddddd, .......)
+  if (/(.)\1{4,}/i.test(trimmed)) return true;
+
+  // 2. 6+ priebalsių iš eilės be balsių (pvz. sdfghj, qwrtyp)
+  if (/[bcdfghjklmnpqrstvwxz]{6,}/i.test(trimmed)) return true;
+
+  // 3. Klaviatūros eilių braukimas (asdf, qwer, zxcvb, asdasd) su ilgiu >= 4
+  if (
+    /(?:asdf|sdfg|dfgh|fghj|ghjk|hjkl|qwer|wert|erty|rtyu|tyui|uiop|zxcv|xcvb|cvbn|vbnm|asdasd)/i.test(
+      trimmed
+    ) &&
+    trimmed.length >= 4
+  ) {
+    return true;
+  }
+
+  // 4. Žodis iš 5+ raidžių visiškai be balsių (pvz. fgjkl, sdfgh)
+  const words = trimmed.split(/\s+/);
+  for (const w of words) {
+    const lettersOnly = w.replace(/[^a-zA-ZąčęėįšųūžĄČĘĖĮŠŲŪŽ]/g, '');
+    if (lettersOnly.length >= 5 && !/[aeiouyąęėįųū]/i.test(lettersOnly)) {
+      return true;
+    }
+  }
+
+  // 5. 6+ simbolių/skyrybos ženklų be jokių raidžių ar skaitmenų (pvz. !@#$%^, ???????)
+  const noLettersOrDigits = trimmed.replace(/[a-zA-Z0-9ąčęėįšųūžĄČĘĖĮŠŲŪŽ\s]/g, '');
+  if (
+    noLettersOrDigits.length >= 6 &&
+    noLettersOrDigits.length === trimmed.replace(/\s+/g, '').length
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function checkJailSpam(userId, messageContent) {
+  const now = Date.now();
+  const history = (jailUserMessageHistory.get(userId) || []).filter(
+    item => now - item.timestamp < 15000
+  );
+
+  const content = (messageContent || '').trim();
+
+  // 1. Random / gibberish tekstas
+  if (isRandomGibberish(content)) {
+    jailUserMessageHistory.delete(userId);
+    return true;
+  }
+
+  // 2. Dubliuotas pranešimas greitai (tas pats tekstas 2 kartus per 5s arba 3 kartus per 15s)
+  const exactDuplicatesRecent = history.filter(
+    item => item.content.toLowerCase() === content.toLowerCase() && now - item.timestamp < 5000
+  );
+  if (exactDuplicatesRecent.length >= 1) {
+    jailUserMessageHistory.delete(userId);
+    return true;
+  }
+  const exactDuplicates15s = history.filter(
+    item => item.content.toLowerCase() === content.toLowerCase()
+  );
+  if (exactDuplicates15s.length >= 2) {
+    jailUserMessageHistory.delete(userId);
+    return true;
+  }
+
+  // 3. Flood rate limits:
+  // - 3 žinutės per 3.5 sekundės
+  const in35s = history.filter(item => now - item.timestamp < 3500);
+  if (in35s.length >= 2) {
+    jailUserMessageHistory.delete(userId);
+    return true;
+  }
+
+  // - 4 žinutės per 7 sekundes
+  const in7s = history.filter(item => now - item.timestamp < 7000);
+  if (in7s.length >= 3) {
+    jailUserMessageHistory.delete(userId);
+    return true;
+  }
+
+  // - 5 žinutės per 12 sekundžių
+  if (history.length >= 4) {
+    jailUserMessageHistory.delete(userId);
+    return true;
+  }
+
+  history.push({ timestamp: now, content });
+  jailUserMessageHistory.set(userId, history);
+  return false;
+}
+
+async function penalizeJailMember(message, reasonText, auditReason) {
+  try {
+    const gifMsg = await message.reply({ content: SLAP_GIF_URL }).catch(() => null);
+
+    const member =
+      message.member ||
+      (await message.guild.members.fetch(message.author.id).catch(() => null));
+
+    if (member?.moderatable) {
+      await member.timeout(SLAP_TIMEOUT_MS, auditReason).catch(() => {});
+    }
+
+    if (member) {
+      await removeXp(member, SLAP_XP_PENALTY).catch(() => {});
+    }
+
+    const warnMsg = await message.channel
+      .send(withAllowedMentions({ content: `${message.author}, ${reasonText}` }, { pingUsers: true }))
+      .catch(() => null);
+
+    setTimeout(() => message.delete().catch(() => {}), AUTO_DELETE_MS);
+    if (gifMsg) setTimeout(() => gifMsg.delete().catch(() => {}), AUTO_DELETE_MS);
+    if (warnMsg) setTimeout(() => warnMsg.delete().catch(() => {}), AUTO_DELETE_MS);
+  } catch (e) {
+    console.error(`[jail penalty error - ${auditReason}]`, e);
+  }
 }
 
 function getActiveJailSession(guildId, userId) {
@@ -81,6 +210,26 @@ async function restoreGuildChannelsForMember(guild, memberId, hiddenChannelIds) 
       /* ignore */
     }
   }
+}
+
+function buildJailEmbed(member, questionIndex, questions) {
+  const total = questions.length;
+  const currentQ = questions[questionIndex];
+  return new EmbedBuilder()
+    .setTitle('🚨 Tu pasodintas į kalėjimą!')
+    .setDescription(
+      `Sveikas atvykęs į kalėjimą, ${member}!\n\n` +
+      `Tau apribota prieiga prie visų serverio kanalų. Norėdamas sugrįžti į serverį, privalai **teisingai atsakyti į visus ${total} klausimus**.\n\n` +
+      `⚠️ **SVARBIOS TAISYKLĖS:**\n` +
+      `• Jeigu bandysi @here, @everyone arba bet ką kitą **@ taginti** — gausi **slap**, **5 min. timeout** ir **-1 000 XP** (\`tu neturi teisės taginti -1k\`)!\n` +
+      `• Jeigu **spaminsi random kažką** ar floodinsi — gausi **slap**, **5 min. timeout** ir **-1 000 XP** (\`apsiramink... -1k\`)!\n\n` +
+      `Atsakymus rašyk šiame kanale. Neteisingi atsakymai ir pranešimai išsitrina po 5 sekundžių, o klausimas atsinaujina šiame pranešime.\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `**${questionIndex + 1}/${total} Klausimas:**\n` +
+      `👉 **${currentQ.question}**`
+    )
+    .setColor(0xed4245)
+    .setTimestamp();
 }
 
 async function jailMember(interaction, targetUser, questionCount = 5) {
@@ -145,6 +294,7 @@ async function jailMember(interaction, targetUser, questionCount = 5) {
         PermissionFlagsBits.SendMessages,
         PermissionFlagsBits.ReadMessageHistory,
         PermissionFlagsBits.ManageChannels,
+        PermissionFlagsBits.ManageMessages,
         PermissionFlagsBits.EmbedLinks,
         PermissionFlagsBits.AttachFiles,
       ],
@@ -188,11 +338,21 @@ async function jailMember(interaction, targetUser, questionCount = 5) {
   );
 
   const pickedQuestions = pickRandomQuestions(questionCount || 5);
+  const introEmbed = buildJailEmbed(targetMember, 0, pickedQuestions);
+
+  const mainMsg = await jailChannel
+    .send(
+      withAllowedMentions(
+        { content: `${targetMember}`, embeds: [introEmbed] },
+        { pingUsers: true }
+      )
+    )
+    .catch(() => null);
 
   db.prepare(`
     INSERT INTO jail_sessions (
-      guild_id, user_id, channel_id, jailed_by, current_question_index, questions_data, hidden_channel_ids, created_at, status
-    ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, 'active')
+      guild_id, user_id, channel_id, jailed_by, current_question_index, questions_data, hidden_channel_ids, question_message_id, created_at, status
+    ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, 'active')
   `).run(
     guild.id,
     targetMember.id,
@@ -200,26 +360,9 @@ async function jailMember(interaction, targetUser, questionCount = 5) {
     interaction.user.id,
     JSON.stringify(pickedQuestions),
     JSON.stringify(hiddenChannelIds),
+    mainMsg ? mainMsg.id : null,
     Date.now()
   );
-
-  const introEmbed = new EmbedBuilder()
-    .setTitle('🚨 Tu pasodintas į kalėjimą!')
-    .setDescription(
-      `Sveikas atvykęs į kalėjimą, ${targetMember}!\n\n` +
-      `Tau apribota prieiga prie visų serverio kanalų. Norėdamas sugrįžti į serverį, privalai **teisingai atsakyti į visus ${pickedQuestions.length} klausimus**.\n\n` +
-      `⚠️ **SVARBI TAISYKLĖ:** Jeigu bandysi @here, @everyone arba bet ką kitą **@ taginti** — gausi **slap**, **5 min. timeout** ir **-1 000 XP**!\n\n` +
-      `Kiekvieną kartą neteisingai atsakius į klausimą, botas parašys „Bandyk dar kartą.“\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `**1/${pickedQuestions.length} Klausimas:**\n` +
-      `👉 **${pickedQuestions[0].question}**`
-    )
-    .setColor(0xed4245)
-    .setTimestamp();
-
-  await jailChannel
-    .send(withAllowedMentions({ content: `${targetMember}`, embeds: [introEmbed] }, { pingUsers: true }))
-    .catch(() => {});
 
   const logChannel = guild.channels.cache.get(config.logChannelId);
   if (logChannel) {
@@ -243,6 +386,8 @@ async function jailMember(interaction, targetUser, questionCount = 5) {
 }
 
 async function releaseFromJail(session, guild, reason = 'completed', memberMaybe = null) {
+  jailUserMessageHistory.delete(session.user_id);
+
   let hiddenChannelIds = [];
   try {
     hiddenChannelIds = JSON.parse(session.hidden_channel_ids || '[]');
@@ -319,25 +464,18 @@ async function handleJailMessage(message) {
 
   // 1. Tikrinam ar bando taginti (@here, @everyone, vartotojus, roles)
   if (isTagAttempt(message)) {
-    try {
-      await message.reply({ content: SLAP_GIF_URL }).catch(() => {});
-
-      if (message.member?.moderatable) {
-        await message.member.timeout(SLAP_TIMEOUT_MS, 'Jail — bandymas taginti').catch(() => {});
-      }
-
-      await removeXp(message.member, SLAP_XP_PENALTY).catch(() => {});
-
-      await message.channel
-        .send(withAllowedMentions({ content: `${message.author}, tu neturi teisės taginti -1k.` }, { pingUsers: true }))
-        .catch(() => {});
-    } catch (e) {
-      console.error('[jail tag penalty error]', e);
-    }
+    jailUserMessageHistory.delete(session.user_id);
+    await penalizeJailMember(message, 'tu neturi teisės taginti -1k.', 'Jail — bandymas taginti');
     return true;
   }
 
-  // 2. Tikrinam klausimo atsakymą
+  // 2. Tikrinam ar spamina random kažką / floodina
+  if (checkJailSpam(session.user_id, message.content)) {
+    await penalizeJailMember(message, 'apsiramink... -1k', 'Jail — spamina random kažką');
+    return true;
+  }
+
+  // 3. Tikrinam klausimo atsakymą
   let questions = [];
   try {
     questions = JSON.parse(session.questions_data);
@@ -354,7 +492,11 @@ async function handleJailMessage(message) {
   const correct = isAnswerCorrect(message.content, currentQ.answers);
 
   if (!correct) {
-    await message.reply('Bandyk dar kartą.').catch(() => {});
+    const replyMsg = await message.reply('Bandyk dar kartą.').catch(() => null);
+    setTimeout(() => message.delete().catch(() => {}), AUTO_DELETE_MS);
+    if (replyMsg) {
+      setTimeout(() => replyMsg.delete().catch(() => {}), AUTO_DELETE_MS);
+    }
     return true;
   }
 
@@ -366,16 +508,54 @@ async function handleJailMessage(message) {
       session.id
     );
 
-    const nextQ = questions[nextIndex];
-    await message
-      .reply({
-        content: `✅ Teisingai!\n\n**${nextIndex + 1}/${questions.length} Klausimas:**\n👉 **${nextQ.question}**`,
-      })
-      .catch(() => {});
+    const targetMember =
+      message.member ||
+      (await message.guild.members.fetch(session.user_id).catch(() => null));
+    const updatedEmbed = buildJailEmbed(
+      targetMember || message.author,
+      nextIndex,
+      questions
+    );
+
+    let mainMsg = null;
+    if (session.question_message_id) {
+      mainMsg = await message.channel.messages
+        .fetch(session.question_message_id)
+        .catch(() => null);
+    }
+
+    if (mainMsg) {
+      await mainMsg.edit({ embeds: [updatedEmbed] }).catch(() => {});
+    } else {
+      const sent = await message.channel
+        .send(
+          withAllowedMentions(
+            { content: `${message.author}`, embeds: [updatedEmbed] },
+            { pingUsers: true }
+          )
+        )
+        .catch(() => null);
+      if (sent) {
+        db.prepare('UPDATE jail_sessions SET question_message_id = ? WHERE id = ?').run(
+          sent.id,
+          session.id
+        );
+      }
+    }
+
+    const confirmMsg = await message
+      .reply('✅ Teisingai! Klausimas atnaujintas viršuje.')
+      .catch(() => null);
+
+    setTimeout(() => message.delete().catch(() => {}), AUTO_DELETE_MS);
+    if (confirmMsg) {
+      setTimeout(() => confirmMsg.delete().catch(() => {}), AUTO_DELETE_MS);
+    }
     return true;
   }
 
   // Visi klausimai atsakyti teisingai!
+  setTimeout(() => message.delete().catch(() => {}), 1500);
   await releaseFromJail(session, message.guild, 'completed', message.member);
   return true;
 }
@@ -415,4 +595,6 @@ module.exports = {
   handleJailMessage,
   handleJailMemberRejoin,
   getActiveJailSession,
+  checkJailSpam,
+  isRandomGibberish,
 };
