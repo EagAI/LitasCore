@@ -220,10 +220,6 @@ function buildJailEmbed(member, questionIndex, questions) {
     .setDescription(
       `Sveikas atvykęs į kalėjimą, ${member}!\n\n` +
       `Tau apribota prieiga prie visų serverio kanalų. Norėdamas sugrįžti į serverį, privalai **teisingai atsakyti į visus ${total} klausimus**.\n\n` +
-      `⚠️ **SVARBIOS TAISYKLĖS:**\n` +
-      `• Jeigu bandysi @here, @everyone arba bet ką kitą **@ taginti** — gausi **slap**, **5 min. timeout** ir **-1 000 XP** (\`tu neturi teisės taginti -1k\`)!\n` +
-      `• Jeigu **spaminsi random kažką** ar floodinsi — gausi **slap**, **5 min. timeout** ir **-1 000 XP** (\`apsiramink... -1k\`)!\n\n` +
-      `Atsakymus rašyk šiame kanale. Neteisingi atsakymai ir pranešimai išsitrina po 5 sekundžių, o klausimas atsinaujina šiame pranešime.\n\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `**${questionIndex + 1}/${total} Klausimas:**\n` +
       `👉 **${currentQ.question}**`
