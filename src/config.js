@@ -88,6 +88,7 @@ module.exports = {
   voiceCategoryId: envTrim('VOICE_CATEGORY_ID'),
   ticketsCategoryId: envTrim('TICKETS_CATEGORY_ID'),
   jailCategoryId: envTrim('JAIL_CATEGORY_ID') || '1548398697577185421',
+  mediaChannelId: envTrim('MEDIA_CHANNEL_ID') || '1496242763900129492',
 
   adminActionsChannelId:
     envTrim('ADMIN_ACTIONS_CHANNEL_ID'),
