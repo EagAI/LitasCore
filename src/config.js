@@ -112,6 +112,7 @@ module.exports = {
   BADGE_MAP,
 
   tiktokUrl: envTrim('TIKTOK_URL'),
+  kickUrl: envTrim('KICK_URL'),
 
   /** Vienas YouTube kanalo UC… ID RSS skelbimams. */
   youtubeChannelId: envTrim('YOUTUBE_CHANNEL_ID'),

@@ -8,12 +8,16 @@ const { XMLParser } = require('fast-xml-parser');
 const db = require('../db');
 const config = require('../config');
 const { withAllowedMentions } = require('../utils/allowedMentions');
+const { checkLive, checkVideoKind } = require('./youtubeLive');
 
 const RSS_BASE = 'https://www.youtube.com/feeds/videos.xml?channel_id=';
 const RSS_POLL_MS_DEFAULT = 2 * 60 * 1000;
 
 const announceContent =
-  'Opa @everyone, LITAS ką tik naujo kontento pakūrė❗ Pažiūrim😱';
+  'Opa @everyone, LITAS ką tik naujo kontento įkėlė❗ Pažiūrim😱';
+
+const liveContent =
+  'Opa @everyone, LITAS ką tik pakūrė tiesioginę transliaciją❗ Pažiūrim😱';
 
 const adminLiveTestContent = 'LITAS dabar LIVE ❗ Pažiūrim😱';
 
@@ -30,7 +34,8 @@ function lastResortImageUrl(videoId) {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
-function buildWatchButtons(videoUrl) {
+// TikTok / Kick mygtukai tik live skelbimuose.
+function buildWatchButtons(videoUrl, { live = false } = {}) {
   const buttons = [
     new ButtonBuilder()
       .setLabel('Žiūrėti per YouTube')
@@ -39,13 +44,23 @@ function buildWatchButtons(videoUrl) {
       .setEmoji('🔴'),
   ];
 
-  if (config.tiktokUrl) {
+  if (live && config.tiktokUrl) {
     buttons.push(
       new ButtonBuilder()
         .setLabel('Žiūrėti per TikTok')
         .setStyle(ButtonStyle.Link)
         .setURL(config.tiktokUrl)
         .setEmoji('⚫')
+    );
+  }
+
+  if (live && config.kickUrl) {
+    buttons.push(
+      new ButtonBuilder()
+        .setLabel('Žiūrėti per KICK')
+        .setStyle(ButtonStyle.Link)
+        .setURL(config.kickUrl)
+        .setEmoji('🟢')
     );
   }
 
@@ -259,7 +274,27 @@ function isYoutubeVideoAlreadyAnnounced(ytChannelId, videoId) {
   return Boolean(row);
 }
 
-async function maybeAnnounceYoutubeVideo(client, video) {
+function markYoutubeVideoAnnounced(ytChannelId, videoId) {
+  db.prepare(
+    `INSERT INTO youtube_state (yt_channel_id, last_video_id)
+     VALUES (?, ?)
+     ON CONFLICT (yt_channel_id) DO UPDATE SET last_video_id = excluded.last_video_id`
+  ).run(ytChannelId, videoId);
+
+  db.prepare(
+    `INSERT INTO youtube_announced_videos (yt_channel_id, video_id)
+     VALUES (?, ?)
+     ON CONFLICT (yt_channel_id, video_id) DO NOTHING`
+  ).run(ytChannelId, videoId);
+}
+
+/**
+ * kind 'video' — RSS įrašas; prieš skelbiant tikrinam video puslapį, kad transliacijų
+ * (gyvų, suplanuotų, pasibaigusių) neskelbtume kaip naujo kontento.
+ * kind 'live' — jau patvirtinta /live patikra.
+ * Kiekvienas video ID skelbiamas tik vieną kartą (youtube_announced_videos).
+ */
+async function maybeAnnounceYoutubeVideo(client, video, kind = 'video') {
   const ytId = config.youtubeChannelId;
   if (!ytId || !video?.videoId) return { posted: false, reason: 'missing_video' };
 
@@ -277,32 +312,57 @@ async function maybeAnnounceYoutubeVideo(client, video) {
 
   announcingVideoKeys.add(videoKey);
   try {
+    if (kind === 'video') {
+      const check = await checkVideoKind(video.videoId);
+      if (check.status === 'ended') {
+        // Transliacijos įrašas / premjera — ne naujas kontentas, daugiau netikrinam.
+        markYoutubeVideoAnnounced(ytId, video.videoId);
+        return { posted: false, reason: 'stream_recording' };
+      }
+      if (check.status === 'live' || check.status === 'upcoming') {
+        return { posted: false, reason: 'is_live' };
+      }
+      if (check.status !== 'video') {
+        console.warn(`[youtube] video ${video.videoId} tipas neaiškus (${check.reason || check.status}) — bandysim vėliau.`);
+        return { posted: false, reason: 'kind_unknown' };
+      }
+    }
+
+    const live = kind === 'live';
     await announceChannel.send(
       withAllowedMentions({
-        content: announceContent,
+        content: live ? liveContent : announceContent,
         embeds: [buildYoutubeEmbed(video)],
-        components: [buildWatchButtons(video.url)],
+        components: [buildWatchButtons(video.url, { live })],
       })
     );
 
     await logYoutubeAnnouncementDebug(client, video);
-
-    db.prepare(
-      `INSERT INTO youtube_state (yt_channel_id, last_video_id)
-       VALUES (?, ?)
-       ON CONFLICT (yt_channel_id) DO UPDATE SET last_video_id = excluded.last_video_id`
-    ).run(ytId, video.videoId);
-
-    db.prepare(
-      `INSERT INTO youtube_announced_videos (yt_channel_id, video_id)
-       VALUES (?, ?)
-       ON CONFLICT (yt_channel_id, video_id) DO NOTHING`
-    ).run(ytId, video.videoId);
+    markYoutubeVideoAnnounced(ytId, video.videoId);
 
     return { posted: true };
   } finally {
     announcingVideoKeys.delete(videoKey);
   }
+}
+
+async function checkYoutubeLive(client) {
+  const status = await checkLive(config.youtubeChannelId);
+  if (status.status === 'unknown') {
+    console.warn('[youtube][live] būsena neaiški:', status.reason);
+    return;
+  }
+  if (status.status !== 'live') return;
+
+  await maybeAnnounceYoutubeVideo(
+    client,
+    {
+      videoId: status.videoId,
+      title: status.title || 'Tiesioginė transliacija',
+      url: `https://www.youtube.com/watch?v=${status.videoId}`,
+    },
+    'live'
+  );
 }
 
 let rssInFlight = false;
@@ -313,6 +373,12 @@ async function checkYoutubeRss(client) {
   if (!ytId) return;
   if (rssInFlight) return;
   rssInFlight = true;
+
+  try {
+    await checkYoutubeLive(client);
+  } catch (e) {
+    console.error('[youtube][live] poll error:', e?.message || e);
+  }
 
   try {
     const video = await fetchNewestVideoFromChannelRss(ytId);
@@ -389,7 +455,7 @@ async function forceTestLiveAnnouncement(client, options = {}) {
       withAllowedMentions({
         content: adminLiveTestContent,
         embeds: [buildYoutubeEmbed(video)],
-        components: [buildWatchButtons(video.url)],
+        components: [buildWatchButtons(video.url, { live: true })],
       })
     );
 
@@ -491,6 +557,9 @@ async function adminLiveCheck(client, options = {}) {
       no_channel: 'Skelbimo kanalas nerastas arba botas negali ten siųsti.',
       in_flight: 'Skelbimas jau vykdomas — bandyk dar kartą po kelių sekundžių.',
       missing_video: 'RSS įrašas neturi video ID.',
+      stream_recording: 'Naujausias RSS įrašas — transliacijos įrašas / premjera, kaip kontentas neskelbiamas.',
+      is_live: 'Naujausias RSS įrašas — gyva ar suplanuota transliacija; ją skelbia live patikra.',
+      kind_unknown: 'Nepavyko nustatyti, ar tai transliacija — bandysim kitą ciklą.',
     };
 
     return finish({
