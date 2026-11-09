@@ -38,13 +38,21 @@ test('consent / netikėtas puslapis → unknown', () => {
   assert.strictEqual(classifyWatchHtml('<html>captcha</html>').status, 'unknown');
 });
 
+// Struktūra kaip tikrame YouTube atsakyme (įdėtas commandMetadata prieš watchEndpoint).
 const botPage = extra =>
   `{"playabilityStatus":{"status":"LOGIN_REQUIRED"}} {"currentVideoEndpoint":{"clickTrackingParams":"x",` +
+  `"commandMetadata":{"webCommandMetadata":{"url":"/watch?v=${ID}","rootVe":3832}},` +
   `"watchEndpoint":{"videoId":"${ID}"}}} "browseId":"UCxyz" ${extra}`;
 
 test('robotų patikra: atsarginis variantas', () => {
   assert.strictEqual(classifyWatchHtml(botPage('"upcomingEventData":{}')).status, 'upcoming');
-  assert.strictEqual(classifyWatchHtml(botPage('"isLive":true')).status, 'live');
+  assert.deepStrictEqual(
+    classifyWatchHtml(botPage(
+      '"playerOverlayVideoDetailsRenderer":{"title":{"simpleText":"Litas live"}} "isLive":true ' +
+      '"dateText":{"simpleText":"Started streaming 2 hours ago"}'
+    )),
+    { status: 'live', videoId: ID, title: 'Litas live' }
+  );
   assert.strictEqual(classifyWatchHtml(botPage('"dateText":{"simpleText":"Streamed live on Nov 1, 2026"}')).status, 'ended');
   assert.strictEqual(classifyWatchHtml(botPage('"dateText":{"simpleText":"Premiered Nov 1, 2026"}')).status, 'ended');
   assert.strictEqual(classifyWatchHtml(botPage('"dateText":{"simpleText":"Nov 1, 2026"}')).status, 'video');

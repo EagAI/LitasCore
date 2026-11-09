@@ -43,10 +43,13 @@ function classifyFromVideoDetails(html) {
 // Atsarginis variantas robotų patikrai (LOGIN_REQUIRED): žiūrim į ytInitialData.
 // Kanalo puslapio pagal browseId NEatpažįstam — jis yra ir video puslapyje.
 function classifyFromInitialData(html) {
-  const videoId = html.match(/"currentVideoEndpoint":\{[^}]*?"watchEndpoint":\{"videoId":"([\w-]{11})"/)?.[1];
+  // Tarp jų yra įdėtas commandMetadata objektas, todėl [^}] netinka.
+  const videoId = html.match(/"currentVideoEndpoint":\{.{0,1000}?"watchEndpoint":\{"videoId":"([\w-]{11})"/)?.[1];
   if (!videoId) return unknown('bot_check');
   const title = unescapeJsonString(
-    html.match(/"videoPrimaryInfoRenderer":\{"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/)?.[1] || ''
+    html.match(/"playerOverlayVideoDetailsRenderer":\{"title":\{"simpleText":"((?:[^"\\]|\\.)*)"/)?.[1] ||
+      html.match(/"videoPrimaryInfoRenderer":\{"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/)?.[1] ||
+      ''
   );
 
   if (html.includes('"upcomingEventData"')) return { status: 'upcoming', videoId, title };
